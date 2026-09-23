@@ -1,0 +1,76 @@
+:root {
+  color-scheme: dark;
+  --bg: #101010;
+  --panel: #181818;
+  --line: #2c2c2c;
+  --text: #f4f4f4;
+  --muted: #a3a3a3;
+  --yellow: #ffe14a;
+  --red: #ff3b30;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+header, main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+header { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 1px solid var(--line); }
+h1 { margin: 0; font-size: 32px; letter-spacing: -0.04em; }
+h2 { margin: 0 0 8px; font-size: 22px; }
+h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.kicker { margin: 0; color: var(--yellow); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+.vendor-line, .lede, .meta { color: var(--muted); }
+.lede { margin-top: 0; }
+section { padding: 28px 0; border-bottom: 1px solid var(--line); }
+form { display: grid; gap: 12px; }
+label { display: grid; gap: 6px; font-size: 14px; }
+input, textarea, select {
+  width: 100%;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+.check { grid-template-columns: 20px 1fr; align-items: center; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+button {
+  background: var(--yellow);
+  color: #111;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.grid { display: grid; grid-template-columns: 1fr 1.2fr 0.9fr; gap: 16px; }
+.card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin: 0 0 8px;
+  font-weight: 450;
+}
+.card strong { display: block; margin-bottom: 4px; }
+.card.on { border-color: var(--yellow); }
+.thumb-layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+#thumb-preview { width: 100%; border-radius: 12px; background: #000; }
+.warn { color: var(--red); }
+.quote { font-size: 28px; margin: 8px 0; }
+.ok { color: #b6f2c2; }
+.bad { color: var(--red); }
+ul { padding-left: 18px; }
+@media (max-width: 860px) {
+  .grid, .thumb-layout, header { display: block; }
+}
