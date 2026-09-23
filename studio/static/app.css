@@ -17,6 +17,8 @@ body {
 }
 header, main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
 header { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 1px solid var(--line); }
+.header-side { display: grid; gap: 10px; justify-items: end; max-width: 420px; }
+#token-form { grid-template-columns: 1fr auto; align-items: end; }
 h1 { margin: 0; font-size: 32px; letter-spacing: -0.04em; }
 h2 { margin: 0 0 8px; font-size: 22px; }
 h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }

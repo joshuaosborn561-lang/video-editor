@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from studio import plan, store, suggest, sync, thumbnail
+from studio import cloud, plan, store, suggest, sync, thumbnail
 from studio.main import app
 
 
@@ -137,6 +137,79 @@ def test_hook_preview_burns_a_caption(tmp_path: Path):
     dest = tmp_path / "preview.mp4"
     render_hook_preview(camera, "15 calls in 30 days.", dest)
     assert dest.stat().st_size > 1000
+
+
+def test_desk_token_blocks_writes_until_it_matches(client: TestClient, monkeypatch):
+    monkeypatch.setenv("DESK_TOKEN", "secret-token")
+    blocked = client.post("/api/projects", json=brief())
+    assert blocked.status_code == 401
+    vendors = client.get("/api/vendors")
+    assert vendors.status_code == 200
+    assert vendors.json()["auth_required"] is True
+    assert vendors.json()["storage"] == "disk"
+    opened = client.post(
+        "/api/projects",
+        json=brief(),
+        headers={"authorization": "Bearer secret-token"},
+    )
+    assert opened.status_code == 200
+
+
+def test_cloud_save_skips_local_json(tmp_path: Path, monkeypatch):
+    records: dict[str, dict] = {}
+    uploads: list[tuple[str, str]] = []
+
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role")
+    monkeypatch.setenv("STUDIO_SCRATCH", str(tmp_path))
+    monkeypatch.setattr(cloud, "upsert_project", lambda project: records.__setitem__(project["id"], dict(project)))
+    monkeypatch.setattr(cloud, "fetch_project", lambda project_id: records.get(project_id))
+    monkeypatch.setattr(
+        cloud,
+        "list_summaries",
+        lambda: [
+            {
+                "id": item["id"],
+                "updated_at": item["updated_at"],
+                "topic": item["brief"]["topic"],
+                "approved": item["approved"],
+            }
+            for item in records.values()
+        ],
+    )
+    monkeypatch.setattr(cloud, "upload", lambda project_id, path: uploads.append((project_id, path.name)))
+
+    local = TestClient(app)
+    created = local.post("/api/projects", json=brief())
+    assert created.status_code == 200
+    project_id = created.json()["id"]
+    assert project_id in records
+    assert not (store.ROOT / project_id / "project.json").exists()
+    loaded = local.get(f"/api/projects/{project_id}")
+    assert loaded.json()["brief"]["topic"] == "sales calls from YouTube"
+    assert local.get("/api/projects").json()[0]["id"] == project_id
+
+    face = tmp_path / "face-src.png"
+    Image.new("RGB", (640, 480), (20, 20, 20)).save(face)
+    suggested = local.post(f"/api/projects/{project_id}/suggest").json()
+    local.post(
+        f"/api/projects/{project_id}/picks",
+        json={
+            "offer_id": suggested["suggestions"]["offers"][0]["id"],
+            "hook_id": suggested["suggestions"]["hooks"][0]["id"],
+            "title_id": suggested["suggestions"]["titles"][0]["id"],
+        },
+    )
+    with face.open("rb") as handle:
+        rendered = local.post(
+            f"/api/projects/{project_id}/thumbnail",
+            files={"face": ("face.png", handle, "image/png")},
+        )
+    assert rendered.status_code == 200
+    assert (project_id, "thumbnail.jpg") in uploads
+    assert (project_id, "face.jpg") in uploads
+    image = local.get(f"/api/projects/{project_id}/thumbnail.jpg")
+    assert image.status_code == 200
 
 
 def test_brief_requires_the_fields_the_hooks_are_built_from(client: TestClient):

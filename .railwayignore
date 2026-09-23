@@ -1,0 +1,12 @@
+.git
+.venv
+data
+research
+tests
+__pycache__
+*.pyc
+.env
+.pytest_cache
+capture_youtube_frames.py
+capture_with_mpv.sh
+extract_frames.py

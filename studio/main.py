@@ -3,20 +3,43 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from studio import plan as plan_mod
+from studio import cloud, plan as plan_mod
 from studio import preview, store, suggest, sync, thumbnail
 from studio.llm import vendor_status
 
 app = FastAPI(title="YouTube desk")
 STATIC = Path(__file__).resolve().parent / "static"
+
+
+class DeskTokenMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        expected = os.environ.get("DESK_TOKEN", "")
+        if expected and request.url.path.startswith("/api/") and request.url.path != "/api/vendors":
+            supplied = _presented_token(request)
+            if not supplied or not secrets.compare_digest(supplied, expected):
+                return JSONResponse({"detail": "desk token required"}, status_code=401)
+        return await call_next(request)
+
+
+def _presented_token(request: Request) -> str:
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[7:].strip()
+    return request.cookies.get("desk_token") or request.headers.get("x-desk-token") or ""
+
+
+app.add_middleware(DeskTokenMiddleware)
 
 class BriefIn(BaseModel):
     founder_name: str = ""
@@ -58,7 +81,10 @@ def _require_suggestions(project: dict) -> dict:
 
 @app.get("/api/vendors")
 def vendors() -> dict:
-    return vendor_status()
+    status = vendor_status()
+    status["storage"] = "supabase" if cloud.enabled() else "disk"
+    status["auth_required"] = bool(os.environ.get("DESK_TOKEN"))
+    return status
 
 
 @app.get("/api/projects")
@@ -130,8 +156,12 @@ async def make_thumbnail(project_id: str, face: UploadFile | None = File(default
     source = folder / "face.jpg"
     if face is not None and face.filename:
         _save_upload(face, source)
+        store.publish(project_id, source)
     elif not source.exists():
-        source = None
+        try:
+            source = store.materialize(project_id, "face.jpg")
+        except FileNotFoundError:
+            source = None
     dest = folder / "thumbnail.jpg"
     picks = project["picks"]
     try:
@@ -146,23 +176,19 @@ async def make_thumbnail(project_id: str, face: UploadFile | None = File(default
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     project["thumbnail"] = "thumbnail.jpg"
-    return store.save(project)
+    saved = store.save(project)
+    store.publish(project_id, dest)
+    return saved
 
 
 @app.get("/api/projects/{project_id}/preview.mp4")
 def download_preview(project_id: str) -> FileResponse:
-    path = store.project_dir(project_id) / "preview.mp4"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="preview not rendered")
-    return FileResponse(path, media_type="video/mp4")
+    return _file(project_id, "preview.mp4", "video/mp4", "preview not rendered")
 
 
 @app.get("/api/projects/{project_id}/thumbnail.jpg")
 def download_thumbnail(project_id: str) -> FileResponse:
-    path = store.project_dir(project_id) / "thumbnail.jpg"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="thumbnail not rendered")
-    return FileResponse(path, media_type="image/jpeg")
+    return _file(project_id, "thumbnail.jpg", "image/jpeg", "thumbnail not rendered")
 
 
 @app.post("/api/projects/{project_id}/script")
@@ -213,7 +239,7 @@ async def upload_footage(
     music_body: UploadFile | None = File(default=None),
 ) -> dict:
     project = _project_or_404(project_id)
-    folder = store.project_dir(project_id)
+    folder = _ensure_footage(project_id, project.get("footage") or {})
     footage = project.setdefault("footage", {})
     mapping = {
         "camera": camera,
@@ -230,6 +256,7 @@ async def upload_footage(
             raise HTTPException(status_code=400, detail=f"{name} must be audio or video")
         dest = folder / f"{name}{suffix}"
         _save_upload(upload, dest)
+        store.publish(project_id, dest)
         footage[name] = dest.name
     footage["sync"] = _sync_report(folder, footage)
     camera_name = footage.get("camera")
@@ -267,13 +294,16 @@ def approve_plan(project_id: str) -> dict:
     project["approved"] = True
     camera_name = (project.get("footage") or {}).get("camera")
     if camera_name:
-        camera = store.project_dir(project_id) / camera_name
+        camera = store.materialize(project_id, camera_name)
         caption = ((project.get("picks") or {}).get("hook") or {}).get("text") or ""
-        preview.render_hook_preview(camera, caption, store.project_dir(project_id) / "preview.mp4")
+        preview_path = store.project_dir(project_id) / "preview.mp4"
+        preview.render_hook_preview(camera, caption, preview_path)
         project["preview"] = "preview.mp4"
+        store.publish(project_id, preview_path)
     saved = store.save(project)
     path = store.project_dir(project_id) / "edit-plan.json"
     path.write_text(json.dumps(saved["plan"], indent=2))
+    store.publish(project_id, path)
     return saved
 
 
@@ -294,6 +324,27 @@ def _sync_report(folder: Path, footage: dict) -> dict:
                 "reason": "The screen recording has no audio. It will be placed as an insert where the script says [[screen: ]].",
             }
     return report
+
+
+def _file(project_id: str, filename: str, media_type: str, missing: str) -> FileResponse:
+    try:
+        path = store.materialize(project_id, filename)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=missing) from exc
+    return FileResponse(path, media_type=media_type)
+
+
+def _ensure_footage(project_id: str, footage: dict) -> Path:
+    folder = store.project_dir(project_id)
+    for name in ("camera", "mic", "screen", "music_intro", "music_body"):
+        filename = footage.get(name)
+        if not filename:
+            continue
+        try:
+            store.materialize(project_id, filename)
+        except FileNotFoundError:
+            continue
+    return folder
 
 
 def _save_upload(upload: UploadFile, dest: Path) -> None:
