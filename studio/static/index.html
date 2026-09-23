@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube desk</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <p class="kicker">Pre-production</p>
+      <h1>YouTube desk</h1>
+    </div>
+    <div class="header-side">
+      <p id="vendor-line" class="vendor-line">Checking which accounts are connected.</p>
+      <form id="token-form" hidden>
+        <label>Desk token <input id="desk-token" type="password" autocomplete="current-password" /></label>
+        <button type="submit">Unlock</button>
+      </form>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. Brief</h2>
+      <p class="lede">The desk suggests offers and hooks from this. You pick. Nothing renders until you approve the price.</p>
+      <form id="brief-form">
+        <label>Your name <input name="founder_name" /></label>
+        <label>Company <input name="company" /></label>
+        <label>Who the video is for <input name="icp" required /></label>
+        <label>The pain, in their words <input name="pain" required /></label>
+        <label>Topic <input name="topic" required /></label>
+        <label>Offer you can sell <input name="current_offer" required /></label>
+        <label>Proof you can say out loud <textarea name="proof" required rows="2"></textarea></label>
+        <label>Ask <input name="cta" value="book a call" /></label>
+        <div class="row">
+          <button type="button" id="sample" class="ghost">Fill an example</button>
+          <button type="submit" id="suggest">Suggest offers and hooks</button>
+        </div>
+      </form>
+      <p id="warn" class="warn" hidden></p>
+    </section>
+
+    <section id="pick-section" hidden>
+      <h2>2. Pick one of each</h2>
+      <div class="grid">
+        <div>
+          <h3>Offer</h3>
+          <div id="offers"></div>
+        </div>
+        <div>
+          <h3>Hook</h3>
+          <div id="hooks"></div>
+        </div>
+        <div>
+          <h3>Title</h3>
+          <div id="titles"></div>
+        </div>
+      </div>
+      <button type="button" id="save-picks" disabled>Use these picks</button>
+    </section>
+
+    <section id="thumb-section" hidden>
+      <h2>3. Thumbnail</h2>
+      <p class="lede">Your face, a few words, one of them in color. This is the file you would upload to YouTube.</p>
+      <div class="thumb-layout">
+        <form id="thumb-form">
+          <label>Face still <input id="face" type="file" accept="image/*" /></label>
+          <div id="thumb-lines"></div>
+          <label>Color word <input id="highlight" /></label>
+          <label class="check"><input id="desaturate" type="checkbox" checked /> Black and white photo</label>
+          <label>Accent
+            <select id="accent">
+              <option value="yellow">Yellow</option>
+              <option value="red">Red</option>
+            </select>
+          </label>
+          <button type="submit" id="render-thumb">Render thumbnail</button>
+        </form>
+        <img id="thumb-preview" alt="Rendered thumbnail" hidden />
+      </div>
+    </section>
+
+    <section id="script-section" hidden>
+      <h2>4. Script</h2>
+      <p class="lede">Picture changes are marked in the script. [[face]], [[screen: what to show]], [[card: THE NUMBER]], [[broll: what]].</p>
+      <textarea id="script" rows="16"></textarea>
+      <div class="row">
+        <button type="button" id="write-script">Write the script</button>
+        <button type="button" id="save-script" class="ghost">Save edits</button>
+        <button type="button" id="approve-script">Approve script</button>
+      </div>
+      <p id="script-state" class="meta"></p>
+    </section>
+
+    <section id="plan-section" hidden>
+      <h2>5. Edit plan and price</h2>
+      <p class="lede">Camera and mic lock on the clap. A screen recording without audio is an insert, placed where the script says [[screen:]].</p>
+      <form id="footage-form">
+        <label>Camera <input name="camera" type="file" accept="video/*" /></label>
+        <label>DJI Mic <input name="mic" type="file" accept="audio/*,video/*" /></label>
+        <label>Screen <input name="screen" type="file" accept="video/*" /></label>
+        <label>Music, hook <input name="music_intro" type="file" accept="audio/*" /></label>
+        <label>Music, after the hook <input name="music_body" type="file" accept="audio/*" /></label>
+        <button type="submit" class="ghost">Attach footage</button>
+      </form>
+      <p id="sync-line" class="meta"></p>
+      <button type="button" id="build-plan">Show the plan and the price</button>
+      <div id="plan"></div>
+      <button type="button" id="approve-edit" hidden>Approve and save the edit plan</button>
+      <p id="approved-line" class="meta"></p>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
