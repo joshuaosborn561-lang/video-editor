@@ -1,0 +1,78 @@
+{
+  "transport": "Apify MCP",
+  "linkedinActor": "harvestapi/linkedin-profile-posts",
+  "youtubeChannelActor": "streamers/youtube-channel-scraper",
+  "youtubeSearchActor": "streamers/youtube-scraper",
+  "runs": [
+    {
+      "person": "Samu Kov\u00e1cs",
+      "actor": "harvestapi/linkedin-profile-posts",
+      "runId": "NSmvF5NFUGNLpDxVT",
+      "status": "SUCCEEDED",
+      "statusMessage": "max charge reached",
+      "datasetId": "xQgQAu7JZpTLRHqMB",
+      "items": 60,
+      "input": {
+        "maxPosts": 60,
+        "postedLimitDate": "2026-03-01",
+        "scrapeReactions": false,
+        "scrapeComments": false
+      }
+    },
+    {
+      "person": "Braden Ricchini",
+      "actor": "harvestapi/linkedin-profile-posts",
+      "runId": "D1G80usi8WcGkRKED",
+      "status": "SUCCEEDED",
+      "statusMessage": "max charge reached",
+      "datasetId": "ga73iAb3lG7yaJIKc",
+      "runReportedItemCount": 50,
+      "datasetReadItemCount": 60
+    },
+    {
+      "channel": "Taylor Haren",
+      "actor": "streamers/youtube-channel-scraper",
+      "runId": "rRKgjDjcvVSdwOfiW",
+      "status": "SUCCEEDED",
+      "datasetId": "pCjxjzAhErEeFIQHg",
+      "items": 8
+    },
+    {
+      "purpose": "YouTube search discovery",
+      "actor": "streamers/youtube-scraper",
+      "runId": "fDxhYxOCDv6UteI8E",
+      "status": "SUCCEEDED",
+      "datasetId": "qft7hh4fw6NL5UOaR",
+      "items": 11,
+      "note": "2 queries returned NO_VIDEOS (GrowthFlare Toronto, Braden Ricchini GP Socials). Other queries returned Samu and Aaron videos."
+    },
+    {
+      "channels": [
+        "AaronxShepherd",
+        "SamuKovacs"
+      ],
+      "actor": "streamers/youtube-channel-scraper",
+      "runId": "FhCvnSV2ICNpE1dyx",
+      "status": "SUCCEEDED",
+      "datasetId": "EMKq67VmAYZadQ6dd",
+      "items": 16
+    },
+    {
+      "purpose": "Second YouTube search for Braden",
+      "actor": "streamers/youtube-scraper",
+      "runId": "tkTulPaEDPz0Ub0TR",
+      "status": "SUCCEEDED",
+      "datasetId": "Nszlo9QYeAKtxqnr3",
+      "items": 14,
+      "foundChannel": "https://www.youtube.com/@bradenricchini"
+    },
+    {
+      "channel": "bradenricchini",
+      "actor": "streamers/youtube-channel-scraper",
+      "runId": "QbwEev2tsaq3DNKsj",
+      "status": "SUCCEEDED",
+      "datasetId": "xbYp2T4UcgVvjfffb",
+      "items": 8
+    }
+  ]
+}
