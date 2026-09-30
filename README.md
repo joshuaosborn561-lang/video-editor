@@ -19,15 +19,15 @@ Set these on the Railway service:
 
 | Variable | Purpose |
 |---|---|
-| `SUPABASE_URL` | Project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only. Never put this in the browser. |
-| `DESK_TOKEN` | Shared password. Without it, a public URL can accept uploads. |
+| `SUPABASE_DB_URL` | Session-pooler URL for the `youtube_desk` login |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | Optional model drafts |
 | `DEEPGRAM_API_KEY` | Optional word captions |
 
-Apply `studio/schema.sql` on a dedicated Supabase project. It creates `desk_projects` and a private `desk` bucket. Row level security is on and there are no anon policies; the service role bypasses them. Scratch files for ffmpeg live in `/tmp/desk` and are uploaded back to the bucket.
+There is no desk password. The browser does not send a token.
 
-A new project on the SalesGlider org is $10 a month. The desk is not pointed at the existing campaign or maps databases.
+`studio/schema.sql` is the YouTube schema on the database you already pay for. It creates `youtube.projects` and `youtube.files`. Footage is a Postgres large object owned by `youtube_desk`. That login cannot read `public.leads` or call the lead export functions. The service role and the anon key stay off Railway, because those keys can read the lead tables. Scratch files for ffmpeg live in `/tmp/desk` and are written back through the same login.
+
+This does not add a Supabase project. A new project would be another $10 a month. The paused project stays paused.
 
 ## Accounts
 
@@ -41,4 +41,4 @@ A new project on the SalesGlider org is $10 a month. The desk is not pointed at 
 | [Auphonic](https://auphonic.com/) | Optional voice leveling. The cut can start from the DJI Mic file without it. |
 | [vidIQ](https://vidiq.com/) | Optional title check before accepting a topic. |
 
-You do not need a generative video account. Screen recordings are files you attach. The thumbnail is rendered from a still you upload. The full timeline is quoted, then saved as `edit-plan.json`. The only render today is the 8-second preview.
+You do not need a generative video account. Screen recordings are files you attach. The thumbnail is rendered from a still you upload. Approving the price with a camera file renders the full cut.

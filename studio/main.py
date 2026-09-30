@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from studio import cloud, cut, plan as plan_mod
 from studio import preview, store, suggest, sync, thumbnail
@@ -21,25 +18,6 @@ from studio.llm import vendor_status
 app = FastAPI(title="YouTube desk")
 STATIC = Path(__file__).resolve().parent / "static"
 
-
-class DeskTokenMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        expected = os.environ.get("DESK_TOKEN", "")
-        if expected and request.url.path.startswith("/api/") and request.url.path != "/api/vendors":
-            supplied = _presented_token(request)
-            if not supplied or not secrets.compare_digest(supplied, expected):
-                return JSONResponse({"detail": "desk token required"}, status_code=401)
-        return await call_next(request)
-
-
-def _presented_token(request: Request) -> str:
-    header = request.headers.get("authorization", "")
-    if header.lower().startswith("bearer "):
-        return header[7:].strip()
-    return request.cookies.get("desk_token") or request.headers.get("x-desk-token") or ""
-
-
-app.add_middleware(DeskTokenMiddleware)
 
 class BriefIn(BaseModel):
     founder_name: str = ""
@@ -83,7 +61,6 @@ def _require_suggestions(project: dict) -> dict:
 def vendors() -> dict:
     status = vendor_status()
     status["storage"] = "supabase" if cloud.enabled() else "disk"
-    status["auth_required"] = bool(os.environ.get("DESK_TOKEN"))
     return status
 
 

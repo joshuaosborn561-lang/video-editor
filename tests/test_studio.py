@@ -139,28 +139,21 @@ def test_hook_preview_burns_a_caption(tmp_path: Path):
     assert dest.stat().st_size > 1000
 
 
-def test_desk_token_blocks_writes_until_it_matches(client: TestClient, monkeypatch):
+def test_desk_has_no_password(client: TestClient, monkeypatch):
     monkeypatch.setenv("DESK_TOKEN", "secret-token")
-    blocked = client.post("/api/projects", json=brief())
-    assert blocked.status_code == 401
+    opened = client.post("/api/projects", json=brief())
+    assert opened.status_code == 200
     vendors = client.get("/api/vendors")
     assert vendors.status_code == 200
-    assert vendors.json()["auth_required"] is True
+    assert "auth_required" not in vendors.json()
     assert vendors.json()["storage"] == "disk"
-    opened = client.post(
-        "/api/projects",
-        json=brief(),
-        headers={"authorization": "Bearer secret-token"},
-    )
-    assert opened.status_code == 200
 
 
 def test_cloud_save_skips_local_json(tmp_path: Path, monkeypatch):
     records: dict[str, dict] = {}
     uploads: list[tuple[str, str]] = []
 
-    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role")
+    monkeypatch.setenv("SUPABASE_DB_URL", "postgresql://youtube_desk@example/postgres")
     monkeypatch.setenv("STUDIO_SCRATCH", str(tmp_path))
     monkeypatch.setattr(cloud, "upsert_project", lambda project: records.__setitem__(project["id"], dict(project)))
     monkeypatch.setattr(cloud, "fetch_project", lambda project_id: records.get(project_id))

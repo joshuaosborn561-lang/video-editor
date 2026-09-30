@@ -1,4 +1,4 @@
-"""Project records. Local JSON, or Supabase when the server keys are set."""
+"""Project records. Local JSON, or schema youtube when SUPABASE_DB_URL is set."""
 
 from __future__ import annotations
 

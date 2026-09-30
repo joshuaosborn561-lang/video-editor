@@ -6,22 +6,11 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
-function applyToken(token) {
-  if (!token) return;
-  localStorage.setItem("desk_token", token);
-  document.cookie = `desk_token=${encodeURIComponent(token)}; path=/; samesite=lax`;
-}
-
-applyToken(localStorage.getItem("desk_token") || "");
-
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
-  const token = localStorage.getItem("desk_token");
-  if (token) headers.authorization = `Bearer ${token}`;
   const response = await fetch(path, { ...options, headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401) $("token-form").hidden = false;
     const detail = data.detail || response.statusText;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
@@ -253,13 +242,6 @@ $("approve-edit").onclick = async () => {
   }
 };
 
-$("token-form").onsubmit = (event) => {
-  event.preventDefault();
-  applyToken($("desk-token").value.trim());
-  $("token-form").hidden = true;
-  showWarn("");
-};
-
 api("/api/vendors").then((vendors) => {
   const mode = vendors.suggestion_mode === "template"
     ? "Hooks and scripts are using the local template. Add an Anthropic or OpenAI key for model drafts."
@@ -272,5 +254,4 @@ api("/api/vendors").then((vendors) => {
     ? "Projects and footage are in Supabase."
     : "Projects are on this server's disk until Supabase is connected.";
   $("vendor-line").textContent = `${mode} ${captions} ${music} ${storage}`;
-  if (vendors.auth_required && !localStorage.getItem("desk_token")) $("token-form").hidden = false;
 });
