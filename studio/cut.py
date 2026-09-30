@@ -95,8 +95,8 @@ def render_cut(folder: Path, script: str, picks: dict, footage: dict, dest: Path
         _write_ass(ass, captions, accent)
         switch = beats[0]["out_end"] if beats else min(20.0, kept)
         music = _music_bed(work, music_intro, music_body, switch, kept)
-        ticks = _ticks(work / "ticks.wav", kept, [beat["out_start"] for beat in beats if beat["layout"] == "card"])
-        _finish(master, ass, music, ticks, dest)
+        effects = _effects(work / "fx.wav", kept, effect_cues(beats), folder, footage)
+        _finish(master, ass, music, effects, dest)
     except CutError:
         raise
     except subprocess.CalledProcessError as exc:
@@ -515,28 +515,107 @@ def _loop_audio(source: Path, dest: Path, seconds: float, fade_out: bool = False
     ])
 
 
-def _ticks(dest: Path, duration: float, moments: list[float]) -> Path | None:
-    if not moments:
+def effect_cues(beats: list[dict]) -> list[dict]:
+    """Hits land on number cards, a click on each screen label, a riser into the first card.
+
+    Face cuts stay dry. That is the Samu / Braden pattern: the picture can change
+    without a whoosh every time.
+    """
+    cues = []
+    seen_card = False
+    for beat in beats:
+        start = float(beat["out_start"])
+        if beat["layout"] == "card":
+            if not seen_card:
+                cues.append({"kind": "riser", "at": start})
+            seen_card = True
+            cues.append({"kind": "hit", "at": start})
+        elif beat["layout"] == "screen":
+            cues.append({"kind": "click", "at": start})
+    return cues
+
+
+def _effects(dest: Path, duration: float, cues: list[dict], folder: Path, footage: dict) -> Path | None:
+    if not cues:
         return None
     rate = 48000
     samples = np.zeros(int(duration * rate) + rate, dtype=np.float32)
-    click = int(0.07 * rate)
-    curve = np.sin(2 * np.pi * 180 * np.arange(click) / rate) * np.linspace(0.4, 0, click)
-    for moment in moments:
-        start = int(moment * rate)
-        end = min(len(samples), start + click)
-        if start < 0 or start >= len(samples):
+    cache: dict[str, np.ndarray] = {}
+    for cue in cues:
+        kind = cue["kind"]
+        if kind not in cache:
+            cache[kind] = _effect_take(kind, folder, footage, rate)
+        take = cache[kind]
+        if take.size == 0:
             continue
-        samples[start:end] += curve[: end - start]
-    pcm = np.clip(samples, -1, 1)
-    stereo = np.column_stack((pcm, pcm))
-    ints = (stereo * 16000).astype(np.int16)
+        if kind == "riser":
+            start = int(cue["at"] * rate) - take.size
+        else:
+            start = int(cue["at"] * rate)
+        _mix_at(samples, take, start)
+    peak = float(np.max(np.abs(samples))) or 1.0
+    if peak > 0.9:
+        samples *= 0.9 / peak
+    stereo = np.column_stack((samples, samples))
+    ints = (np.clip(stereo, -1, 1) * 28000).astype(np.int16)
     with wave.open(str(dest), "wb") as handle:
         handle.setnchannels(2)
         handle.setsampwidth(2)
         handle.setframerate(rate)
         handle.writeframes(ints.tobytes())
     return dest
+
+
+def _effect_take(kind: str, folder: Path, footage: dict, rate: int) -> np.ndarray:
+    attached = _existing(folder, footage.get(f"sfx_{kind}"))
+    if attached is not None:
+        loaded = _load_pcm(attached, rate)
+        if loaded.size:
+            return loaded[: int(1.2 * rate)]
+    return _synth(kind, rate)
+
+
+def _load_pcm(path: Path, rate: int) -> np.ndarray:
+    result = subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(path),
+            "-ac", "1", "-ar", str(rate), "-t", "1.2", "-f", "f32le", "-",
+        ],
+        capture_output=True, check=False,
+    )
+    if result.returncode != 0 or not result.stdout:
+        return np.zeros(0, dtype=np.float32)
+    return np.frombuffer(result.stdout, dtype=np.float32).copy()
+
+
+def _mix_at(buffer: np.ndarray, take: np.ndarray, start: int) -> None:
+    if start < 0:
+        take = take[-start:]
+        start = 0
+    end = min(len(buffer), start + take.size)
+    if start >= len(buffer) or end <= start:
+        return
+    buffer[start:end] += take[: end - start]
+
+
+def _synth(kind: str, rate: int) -> np.ndarray:
+    rng = np.random.default_rng({"hit": 1, "click": 2, "riser": 3}[kind])
+    if kind == "hit":
+        count = int(0.42 * rate)
+        t = np.arange(count) / rate
+        body = np.sin(2 * np.pi * (90 + 70 * np.exp(-t * 8)) * t) * np.exp(-t * 7)
+        noise = rng.standard_normal(count) * np.exp(-t * 18)
+        return (body * 0.75 + noise * 0.3).astype(np.float32)
+    if kind == "click":
+        count = int(0.04 * rate)
+        t = np.arange(count) / rate
+        return (rng.standard_normal(count) * np.exp(-t * 90) * 0.45).astype(np.float32)
+    count = int(0.55 * rate)
+    t = np.arange(count) / rate
+    freq = 180 + 1400 * (t / t[-1]) ** 2
+    phase = 2 * np.pi * np.cumsum(freq) / rate
+    env = (t / t[-1]) ** 1.6
+    return (np.sin(phase) * env * 0.32).astype(np.float32)
 
 
 def _write_ass(path: Path, groups: list[dict], accent: str) -> None:
@@ -590,7 +669,7 @@ def _silence_ranges(path: Path, duration: float) -> list[tuple[float, float]]:
     result = subprocess.run(
         [
             "ffmpeg", "-hide_banner", "-i", str(path),
-            "-af", "silencedetect=noise=-35dB:d=0.45",
+            "-af", "silencedetect=noise=-42dB:d=2.0",
             "-f", "null", "-",
         ],
         capture_output=True, text=True, check=False,
@@ -611,7 +690,14 @@ def _silence_ranges(path: Path, duration: float) -> list[tuple[float, float]]:
             opened = None
     if opened is not None:
         ranges.append((opened, duration))
-    return ranges
+    # Leave a breath of the pause in the cut. Only the long middle goes.
+    kept = []
+    for start, end in ranges:
+        lo = start + 0.35
+        hi = end - 0.25
+        if hi - lo >= 0.5:
+            kept.append((lo, hi))
+    return kept
 
 
 def _clap_times(path: Path, duration: float) -> list[float]:

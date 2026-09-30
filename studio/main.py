@@ -242,6 +242,9 @@ async def upload_footage(
     screen: UploadFile | None = File(default=None),
     music_intro: UploadFile | None = File(default=None),
     music_body: UploadFile | None = File(default=None),
+    sfx_hit: UploadFile | None = File(default=None),
+    sfx_click: UploadFile | None = File(default=None),
+    sfx_riser: UploadFile | None = File(default=None),
 ) -> dict:
     project = _project_or_404(project_id)
     folder = _ensure_footage(project_id, project.get("footage") or {})
@@ -252,6 +255,9 @@ async def upload_footage(
         "screen": screen,
         "music_intro": music_intro,
         "music_body": music_body,
+        "sfx_hit": sfx_hit,
+        "sfx_click": sfx_click,
+        "sfx_riser": sfx_riser,
     }
     for name, upload in mapping.items():
         if upload is None or not upload.filename:
@@ -355,7 +361,7 @@ def _file(project_id: str, filename: str, media_type: str, missing: str) -> File
 
 def _ensure_footage(project_id: str, footage: dict) -> Path:
     folder = store.project_dir(project_id)
-    for name in ("camera", "mic", "screen", "music_intro", "music_body"):
+    for name in ("camera", "mic", "screen", "music_intro", "music_body", "sfx_hit", "sfx_click", "sfx_riser"):
         filename = footage.get(name)
         if not filename:
             continue

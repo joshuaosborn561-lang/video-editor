@@ -226,11 +226,29 @@ def test_cut_drops_the_retake_and_the_pause():
     assert spans[-1][1] == pytest.approx(10, abs=0.05)
 
 
+def test_effects_hit_cards_and_leave_face_cuts_dry():
+    from studio.cut import effect_cues
+
+    cues = effect_cues([
+        {"layout": "face", "out_start": 0.0},
+        {"layout": "card", "out_start": 2.0},
+        {"layout": "screen", "out_start": 4.0},
+        {"layout": "face", "out_start": 6.0},
+        {"layout": "card", "out_start": 8.0},
+    ])
+    kinds = [(cue["kind"], cue["at"]) for cue in cues]
+    assert ("riser", 2.0) in kinds
+    assert ("hit", 2.0) in kinds
+    assert ("click", 4.0) in kinds
+    assert ("hit", 8.0) in kinds
+    assert not any(cue["at"] in (0.0, 6.0) for cue in cues)
+
+
 def test_full_cut_changes_picture_and_burns_captions(tmp_path: Path):
     from studio.cut import render_cut
 
     voice = tmp_path / "voice.wav"
-    _tone_with_gap(voice)
+    _tone_with_gap(voice, seconds=6.4, gap=(1.4, 4.4))
     camera = tmp_path / "camera.mp4"
     screen = tmp_path / "screen.mp4"
     intro = tmp_path / "intro.wav"
@@ -284,12 +302,11 @@ def test_brief_requires_the_fields_the_hooks_are_built_from(client: TestClient):
     assert response.status_code == 400
 
 
-def _tone_with_gap(path: Path, rate: int = 8000) -> None:
+def _tone_with_gap(path: Path, rate: int = 8000, seconds: float = 4.6, gap: tuple[float, float] = (1.6, 3.0)) -> None:
     frames = bytearray()
-    seconds = 4.6
     for index in range(int(rate * seconds)):
         moment = index / rate
-        if 1.6 <= moment < 3.0:
+        if gap[0] <= moment < gap[1]:
             sample = 0
         else:
             sample = int(12000 * math.sin(2 * math.pi * 220 * moment))

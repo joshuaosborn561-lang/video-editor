@@ -96,13 +96,16 @@
 
     <section id="plan-section" hidden>
       <h2>5. Edit plan and price</h2>
-      <p class="lede">Approve the price and the desk cuts the video: dead air and “cut” retakes out, clap sync, captions, cards, and the screen recording. A screen file with no audio is an insert on [[screen:]].</p>
+      <p class="lede">Approve the price and the desk cuts the video. Pauses under a couple of seconds stay. Long dead air and a spoken “cut” come out. A hit lands on each number card, a click on each screen label, and a riser into the first card. Face cuts stay quiet.</p>
       <form id="footage-form">
         <label>Camera <input name="camera" type="file" accept="video/*" /></label>
         <label>DJI Mic <input name="mic" type="file" accept="audio/*,video/*" /></label>
         <label>Screen <input name="screen" type="file" accept="video/*" /></label>
         <label>Music, hook <input name="music_intro" type="file" accept="audio/*" /></label>
         <label>Music, after the hook <input name="music_body" type="file" accept="audio/*" /></label>
+        <label>Hit, on a number card <input name="sfx_hit" type="file" accept="audio/*" /></label>
+        <label>Click, on a screen label <input name="sfx_click" type="file" accept="audio/*" /></label>
+        <label>Riser, into the first card <input name="sfx_riser" type="file" accept="audio/*" /></label>
         <button type="submit" class="ghost">Attach footage</button>
       </form>
       <p id="sync-line" class="meta"></p>
