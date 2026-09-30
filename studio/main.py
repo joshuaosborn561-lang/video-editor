@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from studio import cloud, plan as plan_mod
+from studio import cloud, cut, plan as plan_mod
 from studio import preview, store, suggest, sync, thumbnail
 from studio.llm import vendor_status
 
@@ -191,6 +191,11 @@ def download_thumbnail(project_id: str) -> FileResponse:
     return _file(project_id, "thumbnail.jpg", "image/jpeg", "thumbnail not rendered")
 
 
+@app.get("/api/projects/{project_id}/cut.mp4")
+def download_cut(project_id: str) -> FileResponse:
+    return _file(project_id, "cut.mp4", "video/mp4", "cut not rendered")
+
+
 @app.post("/api/projects/{project_id}/script")
 def write_script(project_id: str) -> dict:
     project = _project_or_404(project_id)
@@ -291,15 +296,29 @@ def approve_plan(project_id: str) -> dict:
     project = _project_or_404(project_id)
     if not project.get("plan"):
         raise HTTPException(status_code=400, detail="build the plan and the price first")
-    project["approved"] = True
     camera_name = (project.get("footage") or {}).get("camera")
     if camera_name:
-        camera = store.materialize(project_id, camera_name)
+        folder = _ensure_footage(project_id, project.get("footage") or {})
+        camera = folder / camera_name
         caption = ((project.get("picks") or {}).get("hook") or {}).get("text") or ""
-        preview_path = store.project_dir(project_id) / "preview.mp4"
+        preview_path = folder / "preview.mp4"
         preview.render_hook_preview(camera, caption, preview_path)
         project["preview"] = "preview.mp4"
         store.publish(project_id, preview_path)
+        cut_path = folder / "cut.mp4"
+        try:
+            project["render"] = cut.render_cut(
+                folder,
+                project.get("script") or "",
+                project.get("picks") or {},
+                project.get("footage") or {},
+                cut_path,
+            )
+        except cut.CutError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        project["cut"] = "cut.mp4"
+        store.publish(project_id, cut_path)
+    project["approved"] = True
     saved = store.save(project)
     path = store.project_dir(project_id) / "edit-plan.json"
     path.write_text(json.dumps(saved["plan"], indent=2))

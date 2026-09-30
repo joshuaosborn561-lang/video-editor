@@ -235,11 +235,22 @@ function drawPlan(plan) {
 }
 
 $("approve-edit").onclick = async () => {
-  state.project = await api(`/api/projects/${state.id}/approve`, { method: "POST" });
-  const preview = state.project.preview
-    ? ` Caption preview: /api/projects/${state.id}/preview.mp4`
-    : "";
-  $("approved-line").textContent = `Approved. Edit plan saved for ${state.id}.${preview}`;
+  try {
+    state.project = await api(`/api/projects/${state.id}/approve`, { method: "POST" });
+    const player = $("cut-player");
+    if (state.project.cut) {
+      player.hidden = false;
+      player.src = `/api/projects/${state.id}/cut.mp4?t=${Date.now()}`;
+      const kept = state.project.render ? state.project.render.kept_seconds : "";
+      $("approved-line").textContent = `Approved. The cut is ${kept}s. Captions follow the ${state.project.render.captions}.`;
+    } else {
+      player.hidden = true;
+      $("approved-line").textContent = `Approved. Edit plan saved for ${state.id}. Attach a camera file and approve again to render the cut.`;
+    }
+    if (state.project.render && state.project.render.warning) showWarn(state.project.render.warning);
+  } catch (error) {
+    showWarn(error.message);
+  }
 };
 
 $("token-form").onsubmit = (event) => {
@@ -253,7 +264,9 @@ api("/api/vendors").then((vendors) => {
   const mode = vendors.suggestion_mode === "template"
     ? "Hooks and scripts are using the local template. Add an Anthropic or OpenAI key for model drafts."
     : `Hooks and scripts are using ${vendors.suggestion_mode}.`;
-  const captions = vendors.deepgram ? "Deepgram is connected for captions." : "Captions wait on a Deepgram key.";
+  const captions = vendors.deepgram
+    ? "Deepgram times the captions to the spoken words."
+    : "Captions follow the script until a Deepgram key is set.";
   const music = vendors.epidemic ? "Epidemic Sound is connected." : "Attach two music files, or add Epidemic Sound later.";
   const storage = vendors.storage === "supabase"
     ? "Projects and footage are in Supabase."

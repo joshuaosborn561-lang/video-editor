@@ -2,7 +2,7 @@
 
 An approval desk for one kind of video: face, full-frame screen recording, bottom captions with one colored word, a thumbnail made from your photo.
 
-The app runs on Railway. Supabase stores the project record and the footage. ffmpeg on Railway makes the thumbnail and the 8-second caption preview. Supabase replaces object storage. It does not render the video.
+The app runs on Railway. Supabase stores the project record and the footage. After you approve the price, ffmpeg cuts the full video: dead air and the word “cut” come out, the mic locks to the clap, captions sit on the bottom, cards and screen recordings replace the face, and the two music files duck under the voice. A Deepgram key times those captions to the words. Without it, captions follow the script. Supabase stores the file. It does not render it.
 
 ```bash
 pip install -r requirements.txt

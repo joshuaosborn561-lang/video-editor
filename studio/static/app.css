@@ -67,7 +67,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card strong { display: block; margin-bottom: 4px; }
 .card.on { border-color: var(--yellow); }
 .thumb-layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
-#thumb-preview { width: 100%; border-radius: 12px; background: #000; }
+#thumb-preview, #cut-player { width: 100%; border-radius: 12px; background: #000; }
+#cut-player { margin-top: 16px; }
 .warn { color: var(--red); }
 .quote { font-size: 28px; margin: 8px 0; }
 .ok { color: #b6f2c2; }

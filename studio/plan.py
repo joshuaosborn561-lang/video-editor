@@ -128,7 +128,7 @@ def quote_for(raw_minutes: float, vendors: dict, estimated: bool) -> dict:
         lines.append({"item": "Script and edit notes", "amount": LLM_FLAT})
     else:
         lines.append({"item": "Script (local template, no model charge)", "amount": 0})
-    lines.append({"item": "Quoted render of the full cut", "amount": RENDER_FLAT})
+    lines.append({"item": "Full cut render", "amount": RENDER_FLAT})
     if vendors.get("epidemic"):
         lines.append({"item": "Music search", "amount": 0})
     else:

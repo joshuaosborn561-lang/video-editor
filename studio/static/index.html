@@ -96,7 +96,7 @@
 
     <section id="plan-section" hidden>
       <h2>5. Edit plan and price</h2>
-      <p class="lede">Camera and mic lock on the clap. A screen recording without audio is an insert, placed where the script says [[screen:]].</p>
+      <p class="lede">Approve the price and the desk cuts the video: dead air and “cut” retakes out, clap sync, captions, cards, and the screen recording. A screen file with no audio is an insert on [[screen:]].</p>
       <form id="footage-form">
         <label>Camera <input name="camera" type="file" accept="video/*" /></label>
         <label>DJI Mic <input name="mic" type="file" accept="audio/*,video/*" /></label>
@@ -108,8 +108,9 @@
       <p id="sync-line" class="meta"></p>
       <button type="button" id="build-plan">Show the plan and the price</button>
       <div id="plan"></div>
-      <button type="button" id="approve-edit" hidden>Approve and save the edit plan</button>
+      <button type="button" id="approve-edit" hidden>Approve and make the video</button>
       <p id="approved-line" class="meta"></p>
+      <video id="cut-player" controls playsinline hidden></video>
     </section>
   </main>
   <script src="/app.js"></script>

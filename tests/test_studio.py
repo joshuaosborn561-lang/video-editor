@@ -212,9 +212,133 @@ def test_cloud_save_skips_local_json(tmp_path: Path, monkeypatch):
     assert image.status_code == 200
 
 
+def test_cut_drops_the_retake_and_the_pause():
+    from studio.cut import kept_spans
+
+    spans = kept_spans(
+        10,
+        [(4.0, 5.0)],
+        [5.2],
+        [{"word": "cut", "start": 3.4, "end": 3.7}],
+    )
+    assert spans[0][1] == pytest.approx(3.4, abs=0.05)
+    assert spans[-1][0] > 5.2
+    assert spans[-1][1] == pytest.approx(10, abs=0.05)
+
+
+def test_full_cut_changes_picture_and_burns_captions(tmp_path: Path):
+    from studio.cut import render_cut
+
+    voice = tmp_path / "voice.wav"
+    _tone_with_gap(voice)
+    camera = tmp_path / "camera.mp4"
+    screen = tmp_path / "screen.mp4"
+    intro = tmp_path / "intro.wav"
+    body = tmp_path / "body.wav"
+    _video_with_audio(camera, voice, "0x224466")
+    _video_with_audio(screen, voice, "0x88AA44")
+    _tone_with_gap(intro)
+    _tone_with_gap(body)
+    script = "\n".join([
+        "[[face]]",
+        "Hello there this is the hook for the video right now.",
+        "[[card: 15 CALLS]]",
+        "That number is the proof.",
+        "[[screen: the inbox]]",
+        "Here is the tool full frame.",
+        "[[broll: the notebook]]",
+        "Write this down now.",
+    ])
+    dest = tmp_path / "cut.mp4"
+    report = render_cut(
+        tmp_path,
+        script,
+        {"highlight": "CALLS", "accent": "yellow", "hook": {"text": "Hello there"}},
+        {
+            "camera": "camera.mp4",
+            "screen": "screen.mp4",
+            "music_intro": "intro.wav",
+            "music_body": "body.wav",
+            "sync": {},
+        },
+        dest,
+    )
+    assert dest.stat().st_size > 1000
+    assert report["captions"] == "script"
+    assert report["kept_seconds"] < report["source_seconds"] - 0.5
+    layouts = [beat["layout"] for beat in report["beats"]]
+    assert layouts[:4] == ["face", "card", "screen", "broll"]
+    width, height = _frame_size(dest)
+    assert (width, height) == (1920, 1080)
+    face = _pixel(dest, tmp_path / "face.png", 0.15, 20, 20)
+    assert face[2] > face[0]
+    card = next(beat for beat in report["beats"] if beat["layout"] == "card")
+    card_pixel = _pixel(dest, tmp_path / "card.png", card["start"] + 0.15, 20, 20)
+    assert max(card_pixel[:3]) < 30
+    caption = _pixel(dest, tmp_path / "caption.png", 0.2, 960, 980)
+    assert max(caption[:3]) > 180
+
+
 def test_brief_requires_the_fields_the_hooks_are_built_from(client: TestClient):
     response = client.post("/api/projects", json={"icp": "", "pain": "", "topic": "", "current_offer": "", "proof": ""})
     assert response.status_code == 400
+
+
+def _tone_with_gap(path: Path, rate: int = 8000) -> None:
+    frames = bytearray()
+    seconds = 4.6
+    for index in range(int(rate * seconds)):
+        moment = index / rate
+        if 1.6 <= moment < 3.0:
+            sample = 0
+        else:
+            sample = int(12000 * math.sin(2 * math.pi * 220 * moment))
+        frames += struct.pack("<h", sample)
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(frames)
+
+
+def _video_with_audio(path: Path, audio: Path, color: str) -> None:
+    subprocess = __import__("subprocess")
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", f"color=c={color}:s=640x360:d=30",
+            "-i", str(audio),
+            "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+            str(path),
+        ],
+        check=True,
+    )
+
+
+def _frame_size(path: Path) -> tuple[int, int]:
+    subprocess = __import__("subprocess")
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x",
+            str(path),
+        ],
+        capture_output=True, text=True, check=True,
+    )
+    width, height = result.stdout.strip().split("x")
+    return int(width), int(height)
+
+
+def _pixel(video: Path, dest: Path, moment: float, x: int, y: int) -> tuple:
+    subprocess = __import__("subprocess")
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-ss", f"{moment:.3f}", "-i", str(video), "-frames:v", "1", str(dest),
+        ],
+        check=True,
+    )
+    return Image.open(dest).convert("RGB").getpixel((x, y))
 
 
 def _wav(path: Path, spike_at: float, rate: int = 8000, seconds: int = 5) -> None:
