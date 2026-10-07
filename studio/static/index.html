@@ -24,9 +24,9 @@
 
   <main>
     <section>
-      <p class="lede">Paste a public Cap link or drop the recording. Long pauses and a spoken “cut” come out. Captions burn on the bottom. A hit lands on a number card and a click on a screen label when the cut has those pictures.</p>
+      <p class="lede">Paste a public Cap link, a public Cap folder, or drop the recording. A folder lists every video so you can set the order. Long pauses and a spoken “cut” come out. Captions burn on the bottom.</p>
       <form id="edit-form">
-        <label>Cap link <input id="cap-url" type="url" placeholder="https://cap.so/s/…" /></label>
+        <label>Cap link or folder <input id="cap-url" type="url" placeholder="https://cap.so/s/… or https://cap.so/c/…" /></label>
         <label>Use the Cap as
           <select id="cap-slot">
             <option value="camera">the main recording</option>
@@ -46,6 +46,12 @@
         </details>
         <button type="submit" id="edit">Edit the video</button>
       </form>
+      <section id="order-section" hidden>
+        <h2>Order</h2>
+        <p class="lede" id="order-title"></p>
+        <ol id="order-list" class="order"></ol>
+        <button type="button" id="edit-order">Edit in this order</button>
+      </section>
       <p id="warn" class="warn" hidden></p>
       <p id="status-line" class="meta"></p>
       <div id="plan"></div>

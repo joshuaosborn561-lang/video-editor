@@ -49,6 +49,15 @@ class CapIn(BaseModel):
     slot: str = "camera"
 
 
+class CapFolderIn(BaseModel):
+    url: str
+
+
+class CapOrderIn(BaseModel):
+    url: str
+    video_ids: list[str]
+
+
 def _project_or_404(project_id: str) -> dict:
     try:
         return store.load(project_id)
@@ -267,6 +276,55 @@ def approve_script(project_id: str) -> dict:
     if not (project.get("script") or "").strip():
         raise HTTPException(status_code=400, detail="write the script first")
     project["script_approved"] = True
+    return store.save(project)
+
+
+@app.post("/api/cap-folder")
+def preview_cap_folder(body: CapFolderIn) -> dict:
+    try:
+        return cap.list_collection(body.url)
+    except cap.CapError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/cap-folder")
+def pull_cap_folder(project_id: str, body: CapOrderIn) -> dict:
+    project = _project_or_404(project_id)
+    try:
+        listing = cap.list_collection(body.url)
+    except cap.CapError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    known = {video["id"]: video for video in listing["videos"]}
+    if not body.video_ids or any(video_id not in known for video_id in body.video_ids):
+        raise HTTPException(status_code=400, detail="Those videos are not in this Cap folder.")
+    if len(set(body.video_ids)) != len(body.video_ids):
+        raise HTTPException(status_code=400, detail="Each video can be in the edit once.")
+    folder = _ensure_footage(project_id, project.get("footage") or {})
+    paths = []
+    clips = []
+    try:
+        for video_id in body.video_ids:
+            video = known[video_id]
+            dest = folder / f"clip-{video_id}.mp4"
+            cap.download(video["url"], dest)
+            paths.append(dest)
+            clips.append({"id": video_id, "title": video["title"], "file": dest.name})
+        camera = folder / "camera.mp4"
+        cap.stitch(paths, camera)
+    except cap.CapError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    store.publish(project_id, camera)
+    footage = project.setdefault("footage", {})
+    footage["camera"] = camera.name
+    footage["clips"] = clips
+    footage["cap_url"] = listing["url"]
+    footage["cap_title"] = listing["title"]
+    if listing["title"] and project.get("kind") == "edit":
+        project.setdefault("brief", {})["topic"] = listing["title"]
+    footage["sync"] = _sync_report(folder, footage)
+    footage["camera_seconds"] = sync.probe_duration(camera)
+    project["plan"] = None
+    project["approved"] = False
     return store.save(project)
 
 

@@ -197,6 +197,77 @@ def test_hook_preview_burns_a_caption(tmp_path: Path):
     assert dest.stat().st_size > 1000
 
 
+def test_folder_list_stops_at_forty_videos():
+    from studio.cap import _MAX_VIDEOS, _extend
+
+    videos = []
+    seen = set()
+    found = [{"id": f"v{index:04d}", "title": str(index), "url": f"https://cap.so/s/v{index:04d}"} for index in range(45)]
+    assert _extend(videos, seen, found) < 0
+    assert len(videos) == _MAX_VIDEOS
+
+
+def test_cap_folder_lists_videos_in_page_order():
+    from studio.cap import CapError, parse_collection_url, videos_from_html
+
+    assert parse_collection_url("https://cap.so/c/folder1234?page=2") == "folder1234"
+    page = """
+    <meta property="og:title" content="Sales takes | Cap Collection">
+    <a href="/s/aaaa1111"><div></div><h3>Intro</h3></a>
+    <a href="/s/bbbb2222"><h3>Demo &amp; close</h3></a>
+    """
+    videos = videos_from_html(page)
+    assert [video["id"] for video in videos] == ["aaaa1111", "bbbb2222"]
+    assert videos[1]["title"] == "Demo & close"
+    with pytest.raises(CapError):
+        parse_collection_url("https://cap.so/s/aaaa1111")
+
+
+def test_folder_order_is_the_edit_order(client: TestClient, monkeypatch, tmp_path: Path):
+    from studio import cap
+
+    listing = {
+        "id": "folder1234",
+        "title": "Sales takes",
+        "url": "https://cap.so/c/folder1234",
+        "videos": [
+            {"id": "aaaa1111", "title": "Intro", "url": "https://cap.so/s/aaaa1111"},
+            {"id": "bbbb2222", "title": "Demo", "url": "https://cap.so/s/bbbb2222"},
+        ],
+        "truncated": False,
+    }
+    seen = []
+
+    def fake_list(url: str) -> dict:
+        assert url == "https://cap.so/c/folder1234"
+        return listing
+
+    def fake_download(url: str, dest: Path) -> dict:
+        seen.append(url)
+        dest.write_bytes(b"clip")
+        return {"video_id": "x", "title": "", "url": url}
+
+    def fake_stitch(paths, dest: Path) -> None:
+        assert [path.name for path in paths] == ["clip-bbbb2222.mp4", "clip-aaaa1111.mp4"]
+        dest.write_bytes(b"joined")
+
+    monkeypatch.setattr(cap, "list_collection", fake_list)
+    monkeypatch.setattr(cap, "download", fake_download)
+    monkeypatch.setattr(cap, "stitch", fake_stitch)
+    monkeypatch.setattr("studio.main.sync.probe_duration", lambda path: 12.0)
+    created = client.post("/api/edits")
+    project_id = created.json()["id"]
+    pulled = client.post(
+        f"/api/projects/{project_id}/cap-folder",
+        json={"url": "https://cap.so/c/folder1234", "video_ids": ["bbbb2222", "aaaa1111"]},
+    )
+    assert pulled.status_code == 200
+    footage = pulled.json()["footage"]
+    assert [clip["title"] for clip in footage["clips"]] == ["Demo", "Intro"]
+    assert footage["camera"] == "camera.mp4"
+    assert seen == ["https://cap.so/s/bbbb2222", "https://cap.so/s/aaaa1111"]
+
+
 def test_cap_share_url_must_be_a_public_cap_link():
     from studio.cap import CapError, parse_share_url
 
