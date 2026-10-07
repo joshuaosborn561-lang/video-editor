@@ -70,6 +70,64 @@ def test_clap_offset_matches_the_spike(tmp_path: Path):
     assert result["offset_seconds"] == pytest.approx(0.4, abs=0.02)
 
 
+def test_three_tools_are_separate_pages(client: TestClient):
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "Edit the video" in home.text
+    assert "Who the video is for" not in home.text
+    pre = client.get("/pre")
+    assert "Who the video is for" in pre.text
+    assert "Pull from Cap" not in pre.text
+    assert "Edit the video" not in pre.text
+    image = client.get("/image")
+    assert "Render image" in image.text
+    assert "Suggest offers" not in image.text
+
+
+def test_edit_starts_from_the_video(client: TestClient, tmp_path: Path):
+    created = client.post("/api/edits")
+    assert created.status_code == 200
+    project_id = created.json()["id"]
+    assert created.json()["kind"] == "edit"
+    assert client.post(f"/api/projects/{project_id}/plan").status_code == 400
+    camera = tmp_path / "camera.mp4"
+    __import__("subprocess").run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "color=c=black:s=320x180:d=1",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(camera),
+        ],
+        check=True,
+    )
+    with camera.open("rb") as handle:
+        uploaded = client.post(
+            f"/api/projects/{project_id}/footage",
+            files={"camera": ("camera.mp4", handle, "video/mp4")},
+        )
+    assert uploaded.status_code == 200
+    priced = client.post(f"/api/projects/{project_id}/plan")
+    assert priced.status_code == 200
+    assert priced.json()["plan"]["mode"] == "edit"
+    assert "Script and edit notes" not in {line["item"] for line in priced.json()["plan"]["quote"]["lines"]}
+
+
+def test_image_renders_without_a_brief(client: TestClient, tmp_path: Path):
+    face = tmp_path / "face.png"
+    Image.new("RGB", (640, 480), (30, 30, 30)).save(face)
+    with face.open("rb") as handle:
+        rendered = client.post(
+            "/api/images",
+            data={"line1": "STOP", "highlight": "STOP", "accent": "yellow", "desaturate": "true"},
+            files={"face": ("face.png", handle, "image/png")},
+        )
+    assert rendered.status_code == 200
+    body = rendered.json()
+    assert body["kind"] == "image"
+    image = client.get(f"/api/projects/{body['id']}/thumbnail.jpg")
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/jpeg"
+
+
 def test_desk_flow_picks_thumbnail_script_and_price(client: TestClient):
     created = client.post("/api/projects", json=brief())
     assert created.status_code == 200

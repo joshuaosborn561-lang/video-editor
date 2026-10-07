@@ -22,6 +22,18 @@ h1 { margin: 0; font-size: 32px; letter-spacing: -0.04em; }
 h2 { margin: 0 0 8px; font-size: 22px; }
 h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .kicker { margin: 0; color: var(--yellow); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+nav { display: flex; gap: 8px; margin-top: 14px; }
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+nav a.on { background: var(--yellow); color: #111; border-color: var(--yellow); }
+details { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+summary { cursor: pointer; color: var(--muted); }
 .vendor-line, .lede, .meta { color: var(--muted); }
 .lede { margin-top: 0; }
 section { padding: 28px 0; border-bottom: 1px solid var(--line); }

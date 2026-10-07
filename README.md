@@ -1,6 +1,6 @@
 # YouTube desk
 
-An approval desk for one kind of video: face, full-frame screen recording, bottom captions with one colored word, a thumbnail made from your photo.
+Three tools. The editor takes a recording and cuts it. Pre-work is the brief, the picks, and the script. Image makes the thumbnail. They do not share a form.
 
 The app runs on Railway. Supabase stores the project record and the footage. After you approve the price, ffmpeg cuts the full video. Silence has to last about two seconds before it is removed, and a little air is left at each join. The word “cut” still drops a retake. The mic locks to the clap, captions sit on the bottom, and cards and screen recordings replace the face. A built-in hit plays on each number card, a click on each screen label, and a riser into the first card. Face cuts have no whoosh. Attach your own files on those three slots to replace the built-in sounds. Two music files, if you attach them, duck under the voice. A Deepgram key times those captions to the words. Without it, captions follow the script. Supabase stores the file. It does not render it.
 

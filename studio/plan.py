@@ -24,6 +24,48 @@ CHECKLIST_LABELS = {
 }
 
 
+def build_edit(footage: dict, raw_minutes: float | None, vendors: dict) -> dict:
+    minutes = raw_minutes if raw_minutes and raw_minutes > 0 else None
+    used = minutes or 40.0
+    lines = []
+    if vendors.get("deepgram"):
+        lines.append({"item": f"Transcription ({used:.0f} min of raw)", "amount": round(used * DEEPGRAM_PER_MINUTE, 2)})
+    else:
+        lines.append({"item": "Transcription (add a Deepgram key to time captions to the words)", "amount": 0})
+    lines.append({"item": "Full cut render", "amount": RENDER_FLAT})
+    total = round(sum(line["amount"] for line in lines), 2)
+    return {
+        "mode": "edit",
+        "beats": [],
+        "cadence_issues": [],
+        "checklist": [
+            {"id": "dead_air", "label": CHECKLIST_LABELS["dead_air"], "ok": True},
+            {"id": "captions", "label": CHECKLIST_LABELS["captions"], "ok": True},
+        ],
+        "quote": {
+            "lines": lines,
+            "total": total,
+            "estimated_minutes": minutes is None,
+            "note": "Minutes come from the recording." if minutes else "Minutes are a 40-minute stand-in until the recording is read.",
+        },
+        "caption_style": {
+            "position": "bottom-center",
+            "type": "Inter Bold",
+            "fill": "white",
+            "stroke": "black",
+            "highlight": "yellow",
+            "words_per_line": "4-7",
+        },
+        "music": {
+            "intro_seconds": 20,
+            "then": "second bed, ducked under the voice",
+            "source": "uploaded files" if footage.get("music_intro") else "not attached yet",
+        },
+        "sync": footage.get("sync"),
+        "ready": bool(footage.get("camera")),
+    }
+
+
 def build_plan(
     script: str,
     picks: dict,

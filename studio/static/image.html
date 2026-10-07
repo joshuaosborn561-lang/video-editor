@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Image</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <p class="kicker">Image</p>
+      <h1>A thumbnail from your face.</h1>
+      <nav>
+        <a href="/">Editor</a>
+        <a href="/pre">Pre-work</a>
+        <a class="on" href="/image">Image</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <p class="lede">Your face, a few words, one of them in color. This file is the one you would upload to YouTube. It does not start an edit.</p>
+      <div class="thumb-layout">
+        <form id="image-form">
+          <label>Face still <input id="face" type="file" accept="image/*" /></label>
+          <label>Line 1 <input id="line1" required /></label>
+          <label>Line 2 <input id="line2" /></label>
+          <label>Line 3 <input id="line3" /></label>
+          <label>Color word <input id="highlight" /></label>
+          <label class="check"><input id="desaturate" type="checkbox" checked /> Black and white photo</label>
+          <label>Accent
+            <select id="accent">
+              <option value="yellow">Yellow</option>
+              <option value="red">Red</option>
+            </select>
+          </label>
+          <button type="submit">Render image</button>
+        </form>
+        <img id="thumb-preview" alt="Rendered thumbnail" hidden />
+      </div>
+      <p id="warn" class="warn" hidden></p>
+    </section>
+  </main>
+  <script src="/image.js"></script>
+</body>
+</html>

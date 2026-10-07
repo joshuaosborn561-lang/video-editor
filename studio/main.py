@@ -6,7 +6,7 @@ import json
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -77,7 +77,27 @@ def projects() -> list[dict]:
 @app.post("/api/projects")
 def create_project(brief: BriefIn) -> dict:
     _require_brief(brief)
-    return store.create(brief.model_dump())
+    project = store.create(brief.model_dump())
+    project["kind"] = "pre"
+    return store.save(project)
+
+
+@app.post("/api/edits")
+def create_edit() -> dict:
+    project = store.create(
+        {
+            "founder_name": "",
+            "company": "",
+            "icp": "",
+            "pain": "",
+            "topic": "Edit",
+            "current_offer": "",
+            "proof": "",
+            "cta": "",
+        }
+    )
+    project["kind"] = "edit"
+    return store.save(project)
 
 
 @app.get("/api/projects/{project_id}")
@@ -127,6 +147,40 @@ def save_picks(project_id: str, picks: PicksIn) -> dict:
     project["plan"] = None
     project["approved"] = False
     return store.save(project)
+
+
+@app.post("/api/images")
+async def create_image(
+    face: UploadFile | None = File(default=None),
+    line1: str = Form(""),
+    line2: str = Form(""),
+    line3: str = Form(""),
+    highlight: str = Form(""),
+    accent: str = Form("yellow"),
+    desaturate: str = Form("true"),
+) -> dict:
+    lines = [line.strip() for line in (line1, line2, line3) if line.strip()]
+    project = store.create(
+        {
+            "founder_name": "",
+            "company": "",
+            "icp": "",
+            "pain": "",
+            "topic": " ".join(lines) or "Image",
+            "current_offer": "",
+            "proof": "",
+            "cta": "",
+        }
+    )
+    project["kind"] = "image"
+    project["picks"] = {
+        "thumb_lines": lines,
+        "highlight": highlight.strip() or (lines[0] if lines else ""),
+        "accent": "red" if accent == "red" else "yellow",
+        "desaturate": desaturate.lower() in {"1", "true", "on", "yes"},
+    }
+    store.save(project)
+    return await make_thumbnail(project["id"], face)
 
 
 @app.post("/api/projects/{project_id}/thumbnail")
@@ -234,6 +288,8 @@ def pull_cap(project_id: str, body: CapIn) -> dict:
     footage[body.slot] = dest.name
     footage["cap_url"] = info["url"]
     footage["cap_title"] = info["title"]
+    if info["title"] and project.get("kind") == "edit":
+        project.setdefault("brief", {})["topic"] = info["title"]
     footage["cap_slot"] = body.slot
     footage["sync"] = _sync_report(folder, footage)
     if footage.get("camera"):
@@ -290,18 +346,21 @@ async def upload_footage(
 @app.post("/api/projects/{project_id}/plan")
 def build_plan(project_id: str) -> dict:
     project = _project_or_404(project_id)
-    if not project.get("script_approved"):
-        raise HTTPException(status_code=400, detail="approve the script before pricing the edit")
     footage = project.get("footage") or {}
     seconds = footage.get("camera_seconds")
     minutes = (seconds / 60.0) if seconds else None
-    project["plan"] = plan_mod.build_plan(
-        project["script"],
-        project.get("picks") or {},
-        footage,
-        minutes,
-        vendor_status(),
-    )
+    if project.get("script_approved"):
+        project["plan"] = plan_mod.build_plan(
+            project["script"],
+            project.get("picks") or {},
+            footage,
+            minutes,
+            vendor_status(),
+        )
+    elif footage.get("camera"):
+        project["plan"] = plan_mod.build_edit(footage, minutes, vendor_status())
+    else:
+        raise HTTPException(status_code=400, detail="attach the video first")
     project["approved"] = False
     return store.save(project)
 
@@ -397,6 +456,21 @@ def _require_brief(brief: BriefIn) -> None:
     missing = [field for field in ("icp", "pain", "topic", "current_offer", "proof") if not getattr(brief, field).strip()]
     if missing:
         raise HTTPException(status_code=400, detail="fill in " + ", ".join(missing))
+
+
+@app.get("/")
+def editor_page() -> FileResponse:
+    return FileResponse(STATIC / "index.html")
+
+
+@app.get("/pre")
+def pre_page() -> FileResponse:
+    return FileResponse(STATIC / "pre.html")
+
+
+@app.get("/image")
+def image_page() -> FileResponse:
+    return FileResponse(STATIC / "image.html")
 
 
 app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
