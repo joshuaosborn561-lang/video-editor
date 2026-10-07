@@ -223,6 +223,127 @@ def test_cap_folder_lists_videos_in_page_order():
         parse_collection_url("https://cap.so/s/aaaa1111")
 
 
+def test_broll_locks_to_the_clap_that_sounds_like_it(tmp_path: Path):
+    mic = tmp_path / "mic.wav"
+    early = tmp_path / "early.wav"
+    late = tmp_path / "late.wav"
+    clip = tmp_path / "clip.wav"
+    _tone(mic, [(1.0, 220), (7.0, 880)], seconds=10)
+    _tone(early, [(0.4, 220)], seconds=3)
+    _tone(late, [(0.4, 880)], seconds=3)
+    _tone(clip, [(0.4, 880)], seconds=3)
+    early_lock = sync.match_to_mic(mic, early)
+    late_lock = sync.match_to_mic(mic, late)
+    assert early_lock["ok"] is True
+    assert early_lock["mic_start"] == pytest.approx(1.0 - 0.4, abs=0.05)
+    assert late_lock["ok"] is True
+    assert late_lock["mic_start"] == pytest.approx(7.0 - 0.4, abs=0.05)
+    assert sync.match_to_mic(mic, clip)["mic_clap_at"] == pytest.approx(7.0, abs=0.05)
+
+
+def test_broll_lands_inside_the_cap_order():
+    from studio.classify import plan_sequence, role_from_title, suggest_role
+
+    assert role_from_title("Cold intro") == "intro"
+    assert role_from_title("Closing card") == "outro"
+    assert suggest_role("Take 2", {"ok": True}) == "broll"
+    assert suggest_role("Closing card", {"ok": False}) == "outro"
+    caps = [
+        {"role": "intro", "title": "Intro", "file": "i.mp4", "duration": 2},
+        {"role": "screen", "title": "Demo", "file": "s.mp4", "duration": 4, "mic_start": 5},
+        {"role": "outro", "title": "Outro", "file": "o.mp4", "duration": 2},
+    ]
+    brolls = [{"role": "broll", "title": "Take", "file": "b.mp4", "duration": 12, "mic_start": 0}]
+    pieces = plan_sequence(caps, brolls)
+    assert [piece["kind"] for piece in pieces] == ["intro", "face", "screen", "face", "outro"]
+    assert pieces[1]["audio"] == "mic"
+    assert pieces[1]["duration"] == 5
+    assert pieces[2]["mic_at"] == 5
+    assert pieces[3]["mic_at"] == 9
+    loose = plan_sequence(
+        [
+            {"role": "intro", "title": "Intro", "file": "i.mp4", "duration": 2},
+            {"role": "screen", "title": "Demo", "file": "s.mp4", "duration": 4},
+            {"role": "outro", "title": "Outro", "file": "o.mp4", "duration": 2},
+        ],
+        [
+            {"role": "broll", "title": "A", "file": "a.mp4", "duration": 3},
+            {"role": "broll", "title": "B", "file": "b.mp4", "duration": 3},
+        ],
+    )
+    assert [piece["kind"] for piece in loose] == ["intro", "face", "screen", "face", "outro"]
+
+
+def test_folder_order_keeps_broll_on_the_mic(client: TestClient, monkeypatch):
+    from studio import cap
+
+    listing = {
+        "id": "folder1234",
+        "title": "Sales takes",
+        "url": "https://cap.so/c/folder1234",
+        "videos": [
+            {"id": "intro1111", "title": "Intro", "url": "https://cap.so/s/intro1111"},
+            {"id": "demo2222", "title": "Demo", "url": "https://cap.so/s/demo2222"},
+        ],
+        "truncated": False,
+    }
+
+    def fake_list(url: str) -> dict:
+        return listing
+
+    def fake_download(url: str, dest: Path) -> dict:
+        dest.write_bytes(b"clip")
+        return {"video_id": "x", "title": "", "url": url}
+
+    def fake_probe(path: Path) -> float:
+        name = Path(path).name
+        if name.startswith("up"):
+            return 12.0
+        if "demo" in name:
+            return 4.0
+        return 2.0
+
+    def fake_match(mic: Path, clip: Path) -> dict:
+        name = Path(clip).name
+        if name.startswith("up"):
+            return {"ok": True, "mic_start": 0.0, "clip_clap_at": None, "mic_clap_at": 0.2, "confidence": 0.9, "reason": None}
+        if "demo" in name:
+            return {"ok": True, "mic_start": 5.0, "clip_clap_at": None, "mic_clap_at": 5.0, "confidence": 0.8, "reason": None}
+        return {"ok": False, "reason": "intro stays at the front"}
+
+    monkeypatch.setattr(cap, "list_collection", fake_list)
+    monkeypatch.setattr(cap, "download", fake_download)
+    monkeypatch.setattr("studio.main.sync.probe_duration", fake_probe)
+    monkeypatch.setattr("studio.main.sync.match_to_mic", fake_match)
+    created = client.post("/api/edits")
+    project_id = created.json()["id"]
+    mic = b"RIFFxxxxWAVEfmt "
+    uploaded = client.post(
+        f"/api/projects/{project_id}/footage",
+        files=[
+            ("mic", ("mic.wav", mic, "audio/wav")),
+            ("clips", ("take.mp4", b"video", "video/mp4")),
+        ],
+    )
+    assert uploaded.status_code == 200
+    uploads = uploaded.json()["footage"]["uploads"]
+    assert uploads[0]["suggested_role"] == "broll"
+    pulled = client.post(
+        f"/api/projects/{project_id}/cap-folder",
+        json={
+            "url": "https://cap.so/c/folder1234",
+            "video_ids": ["intro1111", "demo2222"],
+            "roles": {"intro1111": "intro", "demo2222": "screen"},
+            "broll_ids": ["up0"],
+        },
+    )
+    assert pulled.status_code == 200, pulled.text
+    footage = pulled.json()["footage"]
+    assert [piece["kind"] for piece in footage["sequence"]] == ["intro", "face", "screen", "face"]
+    assert footage["sequence"][2]["audio"] == "mic"
+    assert "locks to the mic" in footage["sequence_note"]
+
+
 def test_folder_order_is_the_edit_order(client: TestClient, monkeypatch, tmp_path: Path):
     from studio import cap
 
@@ -547,12 +668,23 @@ def _pixel(video: Path, dest: Path, moment: float, x: int, y: int) -> tuple:
 
 
 def _wav(path: Path, spike_at: float, rate: int = 8000, seconds: int = 5) -> None:
+    _tone(path, [(spike_at, 220)], rate=rate, seconds=seconds)
+
+
+def _tone(path: Path, spikes: list[tuple[float, float]], rate: int = 8000, seconds: int = 5) -> None:
     frames = bytearray()
     for index in range(rate * seconds):
         moment = index / rate
-        sample = int(800 * math.sin(2 * math.pi * 220 * moment))
-        if abs(moment - spike_at) < 0.004:
-            sample = 32000
+        freq = 220.0
+        sample = 800
+        for spike_at, tone in spikes:
+            if moment >= spike_at:
+                freq = tone
+            if abs(moment - spike_at) < 0.004:
+                sample = 32000
+                break
+        else:
+            sample = int(800 * math.sin(2 * math.pi * freq * moment))
         frames += struct.pack("<h", max(-32767, min(32767, sample)))
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(1)

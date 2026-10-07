@@ -24,19 +24,20 @@
 
   <main>
     <section>
-      <p class="lede">Paste a public Cap link, a public Cap folder, or drop the recording. A folder lists every video so you can set the order. Long pauses and a spoken “cut” come out. Captions burn on the bottom.</p>
+      <p class="lede">Paste a public Cap link or a Cap folder, and add the b-roll plus the DJI mic in the same pass. Cap clips are the sequence: screen, intro, or outro. A video that shares a clap with the mic is b-roll, and the mic is the audio. You set the Cap order. The b-roll lands in that sequence where the clap matches.</p>
       <form id="edit-form">
         <label>Cap link or folder <input id="cap-url" type="url" placeholder="https://cap.so/s/… or https://cap.so/c/…" /></label>
-        <label>Use the Cap as
+        <label>Use a single Cap as
           <select id="cap-slot">
             <option value="camera">the main recording</option>
             <option value="screen">the screen recording</option>
           </select>
         </label>
-        <label>Or the recording file <input id="camera" name="camera" type="file" accept="video/*" /></label>
+        <label>B-roll and other videos <input id="clips" type="file" accept="video/*" multiple /></label>
+        <label>DJI Mic, the audio <input id="mic" type="file" accept="audio/*,video/*" /></label>
+        <label>Or one recording file <input id="camera" name="camera" type="file" accept="video/*" /></label>
         <details>
-          <summary>Mic, screen, music, sound effects</summary>
-          <label>DJI Mic <input id="mic" type="file" accept="audio/*,video/*" /></label>
+          <summary>Screen, music, sound effects</summary>
           <label>Screen <input id="screen" type="file" accept="video/*" /></label>
           <label>Music, hook <input id="music_intro" type="file" accept="audio/*" /></label>
           <label>Music, after the hook <input id="music_body" type="file" accept="audio/*" /></label>
@@ -50,6 +51,9 @@
         <h2>Order</h2>
         <p class="lede" id="order-title"></p>
         <ol id="order-list" class="order"></ol>
+        <h2>B-roll</h2>
+        <p class="lede">These lock to the DJI mic. They play in mic order, and a Cap screen that shares a clap cuts in over them.</p>
+        <ol id="broll-list" class="order"></ol>
         <button type="button" id="edit-order">Edit in this order</button>
       </section>
       <p id="warn" class="warn" hidden></p>

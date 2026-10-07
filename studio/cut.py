@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from studio import plan, sync, transcribe
+from studio import classify, plan, sync, transcribe
 
 FONT = Path(__file__).resolve().parent / "fonts" / "Inter-Bold.ttf"
 WIDTH = 1920
@@ -26,6 +26,8 @@ class CutError(RuntimeError):
 
 
 def render_cut(folder: Path, script: str, picks: dict, footage: dict, dest: Path) -> dict:
+    if footage.get("sequence"):
+        return _render_sequence(folder, script, picks, footage, dest)
     camera_name = footage.get("camera")
     if not camera_name:
         raise CutError("attach a camera file before rendering")
@@ -115,6 +117,163 @@ def render_cut(folder: Path, script: str, picks: dict, footage: dict, dest: Path
             for beat in beats
         ],
     }
+
+
+def _render_sequence(folder: Path, script: str, picks: dict, footage: dict, dest: Path) -> dict:
+    pieces = [dict(piece) for piece in footage.get("sequence") or [] if float(piece.get("duration") or 0) >= 0.2]
+    if not pieces:
+        raise CutError("nothing to cut. Add b-roll or a Cap clip.")
+    mic = _existing(folder, footage.get("mic"))
+    mic_duration = sync.probe_duration(mic) if mic else None
+    if mic is not None and mic_duration:
+        pieces = _silence_on_mic(pieces, mic, mic_duration)
+    if not pieces:
+        raise CutError("the mic timeline was empty after cutting pauses")
+    kept = sum(float(piece["duration"]) for piece in pieces)
+    highlight = (picks.get("highlight") or "").strip()
+    accent = RED if picks.get("accent") == "red" else YELLOW
+    warning = None
+    words: list[dict] = []
+    voice = mic or _existing(folder, pieces[0].get("file"))
+    if voice is not None:
+        try:
+            transcript = transcribe.transcribe(voice)
+            words = list((transcript or {}).get("words") or [])
+        except Exception as exc:
+            warning = f"Deepgram did not answer ({exc}). Captions follow the script."
+    timed = _words_on_sequence(pieces, words)
+    if not timed and (script or "").strip():
+        beats = _place_beats(plan.parse_beats(script), kept, [])
+        timed_caps = _captions(beats, [], highlight)
+    else:
+        timed_caps = _group(timed, highlight) if timed else []
+    captions = timed_caps or [{"start": 0.0, "end": kept, "words": [" "], "highlight": ""}]
+    beats = []
+    cursor = 0.0
+    for piece in pieces:
+        duration = float(piece["duration"])
+        layout = "screen" if piece["kind"] == "screen" else "face"
+        beats.append({
+            "layout": layout,
+            "note": piece.get("title") or "",
+            "out_start": cursor,
+            "out_end": cursor + duration,
+        })
+        cursor += duration
+
+    work = dest.parent / "_cut"
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    music_intro = _existing(folder, footage.get("music_intro"))
+    music_body = _existing(folder, footage.get("music_body"))
+    try:
+        paths = []
+        for index, piece in enumerate(pieces):
+            label = work / f"label-{index}.txt"
+            path = work / f"seg-{index:03d}.mp4"
+            _render_piece(path, piece, folder, mic, label)
+            paths.append(path)
+        master = work / "master.mp4"
+        _concat(paths, master, work)
+        ass = work / "captions.ass"
+        _write_ass(ass, captions, accent)
+        switch = beats[0]["out_end"] if beats else min(20.0, kept)
+        music = _music_bed(work, music_intro, music_body, switch, kept)
+        effects = _effects(work / "fx.wav", kept, effect_cues(beats), folder, footage)
+        _finish(master, ass, music, effects, dest)
+    except CutError:
+        raise
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode(errors="replace")[-500:]
+        raise CutError(detail or "ffmpeg failed") from exc
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {
+        "captions": "deepgram" if timed else "script",
+        "kept_seconds": round(kept, 2),
+        "source_seconds": round(mic_duration or kept, 2),
+        "warning": warning,
+        "note": footage.get("sequence_note") or classify.describe(footage.get("clips") or [], footage.get("broll") or []),
+        "beats": [
+            {"layout": beat["layout"], "start": round(beat["out_start"], 2), "end": round(beat["out_end"], 2), "note": beat.get("note") or ""}
+            for beat in beats
+        ],
+    }
+
+
+def _silence_on_mic(pieces: list[dict], mic: Path, duration: float) -> list[dict]:
+    spans = kept_spans(duration, _silence_ranges(mic, duration), _clap_times(mic, duration), [])
+    refined = []
+    for piece in pieces:
+        if piece.get("audio") != "mic" or piece.get("mic_at") is None:
+            refined.append(piece)
+            continue
+        origin = float(piece["mic_at"])
+        end = origin + float(piece["duration"])
+        for start, stop in spans:
+            lo = max(origin, start)
+            hi = min(end, stop)
+            if hi - lo < 0.2:
+                continue
+            delta = lo - origin
+            refined.append({
+                **piece,
+                "src": float(piece["src"]) + delta,
+                "duration": hi - lo,
+                "mic_at": lo,
+            })
+    return refined or pieces
+
+
+def _words_on_sequence(pieces: list[dict], words: list[dict]) -> list[dict]:
+    mapped = []
+    cursor = 0.0
+    for piece in pieces:
+        duration = float(piece["duration"])
+        if piece.get("audio") == "mic" and piece.get("mic_at") is not None:
+            origin = float(piece["mic_at"])
+            for word in words:
+                token = str(word.get("word") or "").strip()
+                if not token or re.sub(r"[^\w]", "", token).lower() == "cut":
+                    continue
+                start = float(word.get("start") or 0)
+                end = float(word.get("end") or start)
+                if origin <= start and end <= origin + duration + 0.05:
+                    mapped.append({
+                        "word": token,
+                        "start": cursor + (start - origin),
+                        "end": cursor + max(0.05, end - origin),
+                    })
+        cursor += duration
+    return mapped
+
+
+def _render_piece(dest: Path, piece: dict, folder: Path, mic: Path | None, label: Path) -> None:
+    video = folder / str(piece.get("file") or "")
+    if not video.is_file():
+        raise CutError(f"missing {piece.get('file')}")
+    duration = float(piece["duration"])
+    src = max(0.0, float(piece.get("src") or 0))
+    use_mic = piece.get("audio") == "mic" and mic is not None and piece.get("mic_at") is not None
+    video_filter = _cover(1.0)
+    if piece.get("kind") == "screen" and piece.get("title"):
+        _write_label(label, str(piece["title"]))
+        video_filter += "," + _label_filter(label)
+    if use_mic:
+        audio = ["-ss", f"{max(0.0, float(piece['mic_at'])):.3f}", "-t", f"{duration:.3f}", "-i", str(mic)]
+    elif sync.has_audio(video):
+        audio = ["-ss", f"{src:.3f}", "-t", f"{duration:.3f}", "-i", str(video)]
+    else:
+        audio = ["-f", "lavfi", "-t", f"{duration:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
+    _run([
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-ss", f"{src:.3f}", "-t", f"{duration:.3f}", "-i", str(video),
+        *audio,
+        "-filter_complex", f"[0:v]{video_filter}[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a]",
+        "-map", "[v]", "-map", "[a]",
+        *_encode(), str(dest),
+    ])
 
 
 def kept_spans(

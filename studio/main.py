@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from studio import cap, cloud, cut, plan as plan_mod
+from studio import cap, classify, cloud, cut, plan as plan_mod
 from studio import preview, store, suggest, sync, thumbnail
 from studio.llm import vendor_status
 
@@ -54,8 +54,10 @@ class CapFolderIn(BaseModel):
 
 
 class CapOrderIn(BaseModel):
-    url: str
-    video_ids: list[str]
+    url: str = ""
+    video_ids: list[str] = Field(default_factory=list)
+    roles: dict[str, str] = Field(default_factory=dict)
+    broll_ids: list[str] = Field(default_factory=list)
 
 
 def _project_or_404(project_id: str) -> dict:
@@ -290,39 +292,53 @@ def preview_cap_folder(body: CapFolderIn) -> dict:
 @app.post("/api/projects/{project_id}/cap-folder")
 def pull_cap_folder(project_id: str, body: CapOrderIn) -> dict:
     project = _project_or_404(project_id)
-    try:
-        listing = cap.list_collection(body.url)
-    except cap.CapError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    known = {video["id"]: video for video in listing["videos"]}
-    if not body.video_ids or any(video_id not in known for video_id in body.video_ids):
-        raise HTTPException(status_code=400, detail="Those videos are not in this Cap folder.")
+    listing = {"title": "", "url": body.url, "videos": []}
+    if body.url.strip():
+        try:
+            listing = cap.list_collection(body.url)
+        except cap.CapError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not body.video_ids and not body.broll_ids:
+        raise HTTPException(status_code=400, detail="Choose at least one video.")
     if len(set(body.video_ids)) != len(body.video_ids):
         raise HTTPException(status_code=400, detail="Each video can be in the edit once.")
     folder = _ensure_footage(project_id, project.get("footage") or {})
-    paths = []
-    clips = []
+    footage = project.setdefault("footage", {})
+    known = {video["id"]: video for video in listing["videos"]}
+    uploads = {item["id"]: item for item in footage.get("uploads") or []}
     try:
-        for video_id in body.video_ids:
-            video = known[video_id]
-            dest = folder / f"clip-{video_id}.mp4"
-            cap.download(video["url"], dest)
-            paths.append(dest)
-            clips.append({"id": video_id, "title": video["title"], "file": dest.name})
-        camera = folder / "camera.mp4"
-        cap.stitch(paths, camera)
+        caps, brolls = _take_order(folder, footage, known, uploads, body)
     except cap.CapError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    store.publish(project_id, camera)
-    footage = project.setdefault("footage", {})
-    footage["camera"] = camera.name
-    footage["clips"] = clips
-    footage["cap_url"] = listing["url"]
-    footage["cap_title"] = listing["title"]
-    if listing["title"] and project.get("kind") == "edit":
+    sequence = bool(brolls) or any(item.get("source") == "file" for item in caps)
+    if sequence:
+        pieces = [piece for piece in classify.plan_sequence(caps, brolls) if piece["duration"] >= 0.2]
+        if not pieces:
+            raise HTTPException(status_code=400, detail="Nothing left to cut after the order.")
+        footage["sequence"] = pieces
+        footage["sequence_note"] = classify.describe(caps, brolls)
+        footage["broll"] = [_saved_clip(item) for item in brolls]
+        picture = next((item["file"] for item in brolls + caps if item.get("file")), "")
+        footage["camera"] = picture
+        footage["camera_seconds"] = round(sum(piece["duration"] for piece in pieces), 3)
+    else:
+        paths = [folder / item["file"] for item in caps]
+        camera = folder / "camera.mp4"
+        try:
+            cap.stitch(paths, camera)
+        except cap.CapError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        store.publish(project_id, camera)
+        footage["camera"] = camera.name
+        footage.pop("sequence", None)
+        footage.pop("broll", None)
+        footage["camera_seconds"] = sync.probe_duration(camera)
+    footage["clips"] = [_saved_clip(item) for item in caps]
+    footage["cap_url"] = listing.get("url") or ""
+    footage["cap_title"] = listing.get("title") or ""
+    if listing.get("title") and project.get("kind") == "edit":
         project.setdefault("brief", {})["topic"] = listing["title"]
     footage["sync"] = _sync_report(folder, footage)
-    footage["camera_seconds"] = sync.probe_duration(camera)
     project["plan"] = None
     project["approved"] = False
     return store.save(project)
@@ -361,6 +377,7 @@ def pull_cap(project_id: str, body: CapIn) -> dict:
 async def upload_footage(
     project_id: str,
     camera: UploadFile | None = File(default=None),
+    clips: list[UploadFile] | None = File(default=None),
     mic: UploadFile | None = File(default=None),
     screen: UploadFile | None = File(default=None),
     music_intro: UploadFile | None = File(default=None),
@@ -392,6 +409,8 @@ async def upload_footage(
         _save_upload(upload, dest)
         store.publish(project_id, dest)
         footage[name] = dest.name
+    if clips:
+        footage["uploads"] = _store_uploads(project_id, folder, footage, clips)
     footage["sync"] = _sync_report(folder, footage)
     camera_name = footage.get("camera")
     if camera_name:
@@ -415,7 +434,7 @@ def build_plan(project_id: str) -> dict:
             minutes,
             vendor_status(),
         )
-    elif footage.get("camera"):
+    elif footage.get("camera") or footage.get("sequence"):
         project["plan"] = plan_mod.build_edit(footage, minutes, vendor_status())
     else:
         raise HTTPException(status_code=400, detail="attach the video first")
@@ -458,6 +477,111 @@ def approve_plan(project_id: str) -> dict:
     return saved
 
 
+def _store_uploads(project_id: str, folder: Path, footage: dict, clips: list[UploadFile]) -> list[dict]:
+    saved = []
+    allowed = {".mp4", ".mov", ".mkv", ".webm"}
+    for index, upload in enumerate(clips):
+        if upload is None or not upload.filename:
+            continue
+        suffix = Path(upload.filename).suffix.lower() or ".mp4"
+        if suffix not in allowed:
+            raise HTTPException(status_code=400, detail="b-roll must be a video file")
+        dest = folder / f"up{index}{suffix}"
+        _save_upload(upload, dest)
+        store.publish(project_id, dest)
+        title = Path(upload.filename).stem
+        item = {"id": f"up{index}", "file": dest.name, "title": title, "source": "file"}
+        _measure(folder, footage.get("mic"), item)
+        item["suggested_role"] = classify.suggest_role(title, item.get("sync"))
+        saved.append(item)
+    if not saved:
+        raise HTTPException(status_code=400, detail="choose at least one video")
+    return saved
+
+
+def _take_order(folder: Path, footage: dict, known: dict, uploads: dict, body: CapOrderIn) -> tuple[list[dict], list[dict]]:
+    caps = []
+    seen = set()
+    for video_id in body.video_ids:
+        if video_id in seen:
+            raise HTTPException(status_code=400, detail="Each video can be in the edit once.")
+        seen.add(video_id)
+        item = _resolve_clip(folder, known, uploads, video_id, body.roles.get(video_id))
+        if item["role"] == "broll":
+            continue
+        _measure(folder, footage.get("mic"), item)
+        if item["role"] in {"intro", "outro"}:
+            item.pop("mic_start", None)
+        caps.append(item)
+    brolls = []
+    for video_id in body.broll_ids:
+        if video_id in seen:
+            continue
+        seen.add(video_id)
+        item = _resolve_clip(folder, known, uploads, video_id, "broll")
+        item["role"] = "broll"
+        _measure(folder, footage.get("mic"), item)
+        brolls.append(item)
+    return caps, brolls
+
+
+def _resolve_clip(folder: Path, known: dict, uploads: dict, video_id: str, role: str | None) -> dict:
+    chosen = role if role in {"intro", "outro", "screen", "broll"} else ""
+    if video_id in known:
+        video = known[video_id]
+        dest = folder / f"clip-{video_id}.mp4"
+        cap.download(video["url"], dest)
+        store.publish(folder.name, dest)
+        return {
+            "id": video_id,
+            "title": video["title"],
+            "file": dest.name,
+            "source": "cap",
+            "role": chosen or classify.role_from_title(video["title"]),
+        }
+    if video_id in uploads:
+        upload = uploads[video_id]
+        return {
+            "id": video_id,
+            "title": upload.get("title") or video_id,
+            "file": upload["file"],
+            "source": "file",
+            "role": chosen or upload.get("suggested_role") or "screen",
+        }
+    raise HTTPException(status_code=400, detail="Those videos are not in this Cap folder.")
+
+
+def _measure(folder: Path, mic_name: str | None, item: dict) -> None:
+    path = folder / item["file"]
+    item["duration"] = sync.probe_duration(path) or 0
+    item.pop("mic_start", None)
+    item.pop("clip_clap_at", None)
+    if not mic_name:
+        item["sync"] = {"ok": False, "reason": "Add the DJI mic so b-roll can lock to it."}
+        return
+    match = sync.match_to_mic(folder / mic_name, path)
+    item["sync"] = match
+    if match.get("ok"):
+        item["mic_start"] = match.get("mic_start")
+        item["clip_clap_at"] = match.get("clip_clap_at")
+
+
+def _saved_clip(item: dict) -> dict:
+    saved = {
+        "id": item["id"],
+        "title": item.get("title") or "",
+        "file": item["file"],
+        "role": item.get("role") or "screen",
+    }
+    if item.get("mic_start") is not None:
+        saved["mic_start"] = item["mic_start"]
+    if item.get("clip_clap_at") is not None:
+        saved["clip_clap_at"] = item["clip_clap_at"]
+    if item.get("duration"):
+        saved["duration"] = item["duration"]
+    return saved
+
+
 def _sync_report(folder: Path, footage: dict) -> dict:
     report: dict = {}
     camera = footage.get("camera")
@@ -487,10 +611,18 @@ def _file(project_id: str, filename: str, media_type: str, missing: str) -> File
 
 def _ensure_footage(project_id: str, footage: dict) -> Path:
     folder = store.project_dir(project_id)
+    names = []
     for name in ("camera", "mic", "screen", "music_intro", "music_body", "sfx_hit", "sfx_click", "sfx_riser"):
-        filename = footage.get(name)
-        if not filename:
-            continue
+        if footage.get(name):
+            names.append(footage[name])
+    for key in ("uploads", "clips", "broll"):
+        for item in footage.get(key) or []:
+            if item.get("file"):
+                names.append(item["file"])
+    for piece in footage.get("sequence") or []:
+        if piece.get("file"):
+            names.append(piece["file"])
+    for filename in names:
         try:
             store.materialize(project_id, filename)
         except FileNotFoundError:

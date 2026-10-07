@@ -25,7 +25,7 @@ Set these on the Railway service:
 
 There is no desk password. The browser does not send a token.
 
-A public `https://cap.so/s/…` link can be pulled in as the main recording or the screen recording. A public folder link, `https://cap.so/c/…`, lists the videos so you can set the order before the edit. Private and password links are refused. Cap's transcript stays on Cap unless you paste it into the script.
+A public `https://cap.so/s/…` link can be pulled in as the main recording or the screen recording. A public folder link, `https://cap.so/c/…`, lists the videos so you can set the order before the edit. Those Cap clips are the sequence: screen, intro, or outro. B-roll videos and the DJI mic go up in the same pass. A clip that shares a clap with the mic is b-roll, the mic is the audio, and that b-roll lands in the Cap order where the clap matches. Private and password links are refused. Cap's transcript stays on Cap unless you paste it into the script.
 
 `studio/schema.sql` is the YouTube schema on the database you already pay for. It creates `youtube.projects` and `youtube.files`. Footage is a Postgres large object owned by `youtube_desk`. That login cannot read `public.leads` or call the lead export functions. The service role and the anon key stay off Railway, because those keys can read the lead tables. Scratch files for ffmpeg live in `/tmp/desk` and are written back through the same login.
 
