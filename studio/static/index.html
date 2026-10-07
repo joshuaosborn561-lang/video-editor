@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Editor</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <p class="kicker">Editor</p>
+      <h1>Here's the video. Edit it.</h1>
+      <nav>
+        <a class="on" href="/">Editor</a>
+        <a href="/pre">Pre-work</a>
+        <a href="/image">Image</a>
+      </nav>
+    </div>
+    <div class="header-side">
+      <p id="vendor-line" class="vendor-line">Checking storage.</p>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <p class="lede">Paste a public Cap link or a Cap folder, and add the b-roll plus the DJI mic in the same pass. Cap clips are the sequence: screen, intro, or outro. A video that shares a clap with the mic is b-roll, and the mic is the audio. You set the Cap order. The b-roll lands in that sequence where the clap matches.</p>
+      <form id="edit-form">
+        <label>Cap link or folder <input id="cap-url" type="url" placeholder="https://cap.so/s/… or https://cap.so/c/…" /></label>
+        <label>Use a single Cap as
+          <select id="cap-slot">
+            <option value="camera">the main recording</option>
+            <option value="screen">the screen recording</option>
+          </select>
+        </label>
+        <label>B-roll and other videos <input id="clips" type="file" accept="video/*" multiple /></label>
+        <label>DJI Mic, the audio <input id="mic" type="file" accept="audio/*,video/*" /></label>
+        <label>Or one recording file <input id="camera" name="camera" type="file" accept="video/*" /></label>
+        <details>
+          <summary>Screen, music, sound effects</summary>
+          <label>Screen <input id="screen" type="file" accept="video/*" /></label>
+          <label>Music, hook <input id="music_intro" type="file" accept="audio/*" /></label>
+          <label>Music, after the hook <input id="music_body" type="file" accept="audio/*" /></label>
+          <label>Hit, on a number card <input id="sfx_hit" type="file" accept="audio/*" /></label>
+          <label>Click, on a screen label <input id="sfx_click" type="file" accept="audio/*" /></label>
+          <label>Riser, into the first card <input id="sfx_riser" type="file" accept="audio/*" /></label>
+        </details>
+        <button type="submit" id="edit">Edit the video</button>
+      </form>
+      <section id="order-section" hidden>
+        <h2>Order</h2>
+        <p class="lede" id="order-title"></p>
+        <ol id="order-list" class="order"></ol>
+        <h2>B-roll</h2>
+        <p class="lede">These lock to the DJI mic. They play in mic order, and a Cap screen that shares a clap cuts in over them.</p>
+        <ol id="broll-list" class="order"></ol>
+        <button type="button" id="edit-order">Edit in this order</button>
+      </section>
+      <p id="warn" class="warn" hidden></p>
+      <p id="status-line" class="meta"></p>
+      <div id="plan"></div>
+      <p id="approved-line" class="meta"></p>
+      <video id="cut-player" controls playsinline hidden></video>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

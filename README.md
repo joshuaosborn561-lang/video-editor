@@ -1,0 +1,46 @@
+# YouTube desk
+
+Three tools. The editor takes a recording and cuts it. Pre-work is the brief, the picks, and the script. Image makes the thumbnail. They do not share a form.
+
+The app runs on Railway. Supabase stores the project record and the footage. After you approve the price, ffmpeg cuts the full video. Silence has to last about two seconds before it is removed, and a little air is left at each join. The word “cut” still drops a retake. The mic locks to the clap, captions sit on the bottom, and cards and screen recordings replace the face. A built-in hit plays on each number card, a click on each screen label, and a riser into the first card. Face cuts have no whoosh. Attach your own files on those three slots to replace the built-in sounds. Two music files, if you attach them, duck under the voice. A Deepgram key times those captions to the words. Without it, captions follow the script. Supabase stores the file. It does not render it.
+
+```bash
+pip install -r requirements.txt
+uvicorn studio.main:app --reload
+```
+
+Open http://127.0.0.1:8000 for a local check. Copy `.env.example` to `.env` and load it before starting (`set -a && source .env && set +a`). With no keys, suggestions come from the brief and files stay in `data/projects`.
+
+## Cloud
+
+Railway builds `Dockerfile` (Python, ffmpeg) and listens on `$PORT`. Health check is `GET /api/vendors`.
+
+Set these on the Railway service:
+
+| Variable | Purpose |
+|---|---|
+| `SUPABASE_DB_URL` | Session-pooler URL for the `youtube_desk` login |
+| `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | Optional model drafts |
+| `DEEPGRAM_API_KEY` | Optional word captions |
+
+There is no desk password. The browser does not send a token.
+
+A public `https://cap.so/s/…` link can be pulled in as the main recording or the screen recording. A public folder link, `https://cap.so/c/…`, lists the videos so you can set the order before the edit. Those Cap clips are the sequence: screen, intro, or outro. B-roll videos and the DJI mic go up in the same pass. A clip that shares a clap with the mic is b-roll, the mic is the audio, and that b-roll lands in the Cap order where the clap matches. Private and password links are refused. Cap's transcript stays on Cap unless you paste it into the script.
+
+`studio/schema.sql` is the YouTube schema on the database you already pay for. It creates `youtube.projects` and `youtube.files`. Footage is a Postgres large object owned by `youtube_desk`. That login cannot read `public.leads` or call the lead export functions. The service role and the anon key stay off Railway, because those keys can read the lead tables. Scratch files for ffmpeg live in `/tmp/desk` and are written back through the same login.
+
+This does not add a Supabase project. A new project would be another $10 a month. The paused project stays paused.
+
+## Accounts
+
+| Account | When you need it |
+|---|---|
+| [Railway](https://railway.com/) | Hosts the desk and ffmpeg. |
+| [Supabase](https://supabase.com/) | Project JSON and footage. Replaces S3. |
+| [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/) | Model-written hooks, offers, titles, and scripts. Without a key, the desk fills those from the brief. |
+| [Deepgram](https://console.deepgram.com/) | Word-timed captions after footage is uploaded. |
+| [Epidemic Sound](https://www.epidemicsound.com/) | Two music beds. A creator login is enough: download the tracks and attach them. The free partner API cannot ship public videos. |
+| [Auphonic](https://auphonic.com/) | Optional voice leveling. The cut can start from the DJI Mic file without it. |
+| [vidIQ](https://vidiq.com/) | Optional title check before accepting a topic. |
+
+You do not need a generative video account. Screen recordings are files you attach. The thumbnail is rendered from a still you upload. Approving the price with a camera file renders the full cut.

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pre-work</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <p class="kicker">Pre-work</p>
+      <h1>Brief, picks, script.</h1>
+      <nav>
+        <a href="/">Editor</a>
+        <a class="on" href="/pre">Pre-work</a>
+        <a href="/image">Image</a>
+      </nav>
+    </div>
+    <div class="header-side">
+      <p id="vendor-line" class="vendor-line">Checking which accounts are connected.</p>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Brief</h2>
+      <p class="lede">This suggests offers and hooks. You pick. The recording is a separate step in the editor.</p>
+      <form id="brief-form">
+        <label>Your name <input name="founder_name" /></label>
+        <label>Company <input name="company" /></label>
+        <label>Who the video is for <input name="icp" required /></label>
+        <label>The pain, in their words <input name="pain" required /></label>
+        <label>Topic <input name="topic" required /></label>
+        <label>Offer you can sell <input name="current_offer" required /></label>
+        <label>Proof you can say out loud <textarea name="proof" required rows="2"></textarea></label>
+        <label>Ask <input name="cta" value="book a call" /></label>
+        <div class="row">
+          <button type="button" id="sample" class="ghost">Fill an example</button>
+          <button type="submit" id="suggest">Suggest offers and hooks</button>
+        </div>
+      </form>
+      <p id="warn" class="warn" hidden></p>
+    </section>
+
+    <section id="pick-section" hidden>
+      <h2>Pick one of each</h2>
+      <div class="grid">
+        <div>
+          <h3>Offer</h3>
+          <div id="offers"></div>
+        </div>
+        <div>
+          <h3>Hook</h3>
+          <div id="hooks"></div>
+        </div>
+        <div>
+          <h3>Title</h3>
+          <div id="titles"></div>
+        </div>
+      </div>
+      <button type="button" id="save-picks" disabled>Use these picks</button>
+    </section>
+
+    <section id="script-section" hidden>
+      <h2>Script</h2>
+      <p class="lede">Picture changes are marked in the script. [[face]], [[screen: what to show]], [[card: THE NUMBER]], [[broll: what]]. When you have the recording, open the editor.</p>
+      <textarea id="script" rows="16"></textarea>
+      <div class="row">
+        <button type="button" id="write-script">Write the script</button>
+        <button type="button" id="save-script" class="ghost">Save edits</button>
+        <button type="button" id="approve-script">Approve script</button>
+      </div>
+      <p id="script-state" class="meta"></p>
+    </section>
+  </main>
+  <script src="/pre.js"></script>
+</body>
+</html>
