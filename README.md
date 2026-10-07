@@ -25,6 +25,8 @@ Set these on the Railway service:
 
 There is no desk password. The browser does not send a token.
 
+A public `https://cap.so/s/…` link can be pulled in as the main recording or the screen recording. Private and password links are refused. The desk gets the video file and the title. Cap's transcript stays on Cap unless you paste it into the script.
+
 `studio/schema.sql` is the YouTube schema on the database you already pay for. It creates `youtube.projects` and `youtube.files`. Footage is a Postgres large object owned by `youtube_desk`. That login cannot read `public.leads` or call the lead export functions. The service role and the anon key stay off Railway, because those keys can read the lead tables. Scratch files for ffmpeg live in `/tmp/desk` and are written back through the same login.
 
 This does not add a Supabase project. A new project would be another $10 a month. The paused project stays paused.

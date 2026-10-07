@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from studio import cloud, cut, plan as plan_mod
+from studio import cap, cloud, cut, plan as plan_mod
 from studio import preview, store, suggest, sync, thumbnail
 from studio.llm import vendor_status
 
@@ -42,6 +42,11 @@ class PicksIn(BaseModel):
 
 class ScriptIn(BaseModel):
     text: str
+
+
+class CapIn(BaseModel):
+    url: str
+    slot: str = "camera"
 
 
 def _project_or_404(project_id: str) -> dict:
@@ -208,6 +213,33 @@ def approve_script(project_id: str) -> dict:
     if not (project.get("script") or "").strip():
         raise HTTPException(status_code=400, detail="write the script first")
     project["script_approved"] = True
+    return store.save(project)
+
+
+@app.post("/api/projects/{project_id}/cap")
+def pull_cap(project_id: str, body: CapIn) -> dict:
+    if body.slot not in {"camera", "screen"}:
+        raise HTTPException(status_code=400, detail="choose the main recording or the screen recording")
+    project = _project_or_404(project_id)
+    folder = _ensure_footage(project_id, project.get("footage") or {})
+    dest = folder / f"{body.slot}.mp4"
+    try:
+        info = cap.download(body.url, dest)
+    except cap.CapError as exc:
+        if dest.is_file():
+            dest.unlink()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    store.publish(project_id, dest)
+    footage = project.setdefault("footage", {})
+    footage[body.slot] = dest.name
+    footage["cap_url"] = info["url"]
+    footage["cap_title"] = info["title"]
+    footage["cap_slot"] = body.slot
+    footage["sync"] = _sync_report(folder, footage)
+    if footage.get("camera"):
+        footage["camera_seconds"] = sync.probe_duration(folder / footage["camera"])
+    project["plan"] = None
+    project["approved"] = False
     return store.save(project)
 
 

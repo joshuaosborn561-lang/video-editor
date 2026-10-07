@@ -181,6 +181,26 @@ $("approve-script").onclick = async () => {
   $("plan-section").hidden = false;
 };
 
+$("cap-form").onsubmit = async (event) => {
+  event.preventDefault();
+  if (!state.id) {
+    showWarn("Start from the brief first.");
+    return;
+  }
+  $("sync-line").textContent = "Pulling the Cap…";
+  try {
+    state.project = await api(`/api/projects/${state.id}/cap`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: $("cap-url").value.trim(), slot: $("cap-slot").value }),
+    });
+    $("sync-line").textContent = footageText(state.project.footage);
+  } catch (error) {
+    showWarn(error.message);
+    $("sync-line").textContent = "";
+  }
+};
+
 $("footage-form").onsubmit = async (event) => {
   event.preventDefault();
   const body = new FormData();
@@ -188,15 +208,23 @@ $("footage-form").onsubmit = async (event) => {
     if (value && value.name) body.append(key, value);
   }
   state.project = await api(`/api/projects/${state.id}/footage`, { method: "POST", body });
-  $("sync-line").textContent = syncText(state.project.footage.sync);
+  $("sync-line").textContent = footageText(state.project.footage);
 };
 
-function syncText(sync) {
-  if (!sync || !Object.keys(sync).length) return "No camera and mic pair attached yet. The price will assume 40 minutes of raw footage.";
-  return Object.entries(sync).map(([name, result]) => {
-    if (result.ok) return `${name}: clap lock, shift ${result.offset_seconds}s (confidence ${result.confidence}).`;
-    return `${name}: ${result.reason}`;
-  }).join(" ");
+function footageText(footage) {
+  const bits = [];
+  if (footage && footage.cap_title) bits.push(`Cap: ${footage.cap_title}.`);
+  if (footage && footage.camera_seconds) bits.push(`Main recording is ${Math.round(footage.camera_seconds)} seconds.`);
+  const sync = footage && footage.sync;
+  if (sync && Object.keys(sync).length) {
+    bits.push(Object.entries(sync).map(([name, result]) => {
+      if (result.ok) return `${name}: clap lock, shift ${result.offset_seconds}s (confidence ${result.confidence}).`;
+      return `${name}: ${result.reason}`;
+    }).join(" "));
+  } else if (!footage || !footage.camera) {
+    bits.push("No main recording yet. The price will assume 40 minutes.");
+  }
+  return bits.join(" ");
 }
 
 $("build-plan").onclick = async () => {

@@ -139,6 +139,72 @@ def test_hook_preview_burns_a_caption(tmp_path: Path):
     assert dest.stat().st_size > 1000
 
 
+def test_cap_share_url_must_be_a_public_cap_link():
+    from studio.cap import CapError, parse_share_url
+
+    assert parse_share_url("https://cap.so/s/zk5z77w95w8qctf") == "zk5z77w95w8qctf"
+    assert parse_share_url("https://www.cap.so/embed/zk5z77w95w8qctf?t=1") == "zk5z77w95w8qctf"
+    with pytest.raises(CapError):
+        parse_share_url("https://example.com/s/zk5z77w95w8qctf")
+    with pytest.raises(CapError):
+        parse_share_url("http://cap.so/s/zk5z77w95w8qctf")
+
+
+def test_cap_download_follows_the_video_redirect(tmp_path: Path):
+    import httpx
+
+    from studio.cap import download
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/playlist":
+            return httpx.Response(302, headers={"location": "https://v.cap.so/owner/video/result.mp4"})
+        if request.url.host == "v.cap.so":
+            return httpx.Response(200, headers={"content-type": "video/mp4"}, content=b"\x00\x00\x00\x18ftypmp42" + b"x" * 2000)
+        if request.url.path.startswith("/s/"):
+            html = '<meta property="og:title" content="Demo take | Cap Recording">'
+            return httpx.Response(200, text=html)
+        return httpx.Response(404)
+
+    dest = tmp_path / "camera.mp4"
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+
+    class _Client(real_client):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = transport
+            super().__init__(*args, **kwargs)
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(httpx, "Client", _Client)
+    try:
+        info = download("https://cap.so/s/zk5z77w95w8qctf", dest)
+    finally:
+        monkey.undo()
+    assert info["title"] == "Demo take"
+    assert dest.stat().st_size > 1000
+
+
+def test_desk_pulls_a_cap_into_the_project(client: TestClient, monkeypatch, tmp_path: Path):
+    from studio import cap
+
+    def fake_download(url: str, dest: Path) -> dict:
+        dest.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 2000)
+        return {"video_id": "zk5z77w95w8qctf", "title": "Demo take", "url": "https://cap.so/s/zk5z77w95w8qctf"}
+
+    monkeypatch.setattr(cap, "download", fake_download)
+    created = client.post("/api/projects", json=brief())
+    project_id = created.json()["id"]
+    pulled = client.post(
+        f"/api/projects/{project_id}/cap",
+        json={"url": "https://cap.so/s/zk5z77w95w8qctf", "slot": "camera"},
+    )
+    assert pulled.status_code == 200
+    footage = pulled.json()["footage"]
+    assert footage["camera"] == "camera.mp4"
+    assert footage["cap_title"] == "Demo take"
+    assert (store.ROOT / project_id / "camera.mp4").is_file()
+
+
 def test_desk_has_no_password(client: TestClient, monkeypatch):
     monkeypatch.setenv("DESK_TOKEN", "secret-token")
     opened = client.post("/api/projects", json=brief())

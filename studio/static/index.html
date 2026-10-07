@@ -93,6 +93,17 @@
     <section id="plan-section" hidden>
       <h2>5. Edit plan and price</h2>
       <p class="lede">Approve the price and the desk cuts the video. Pauses under a couple of seconds stay. Long dead air and a spoken “cut” come out. A hit lands on each number card, a click on each screen label, and a riser into the first card. Face cuts stay quiet.</p>
+      <form id="cap-form">
+        <label>Cap link <input id="cap-url" type="url" placeholder="https://cap.so/s/…" required /></label>
+        <label>Use it as
+          <select id="cap-slot">
+            <option value="camera">the main recording</option>
+            <option value="screen">the screen recording</option>
+          </select>
+        </label>
+        <button type="submit">Pull from Cap</button>
+      </form>
+      <p class="lede">Set the Cap to public, anyone with the link. A private or password link cannot be opened. If this is the only file, leave it as the main recording. If you also have the Osmo, pull this as the screen and upload the Osmo as the camera.</p>
       <form id="footage-form">
         <label>Camera <input name="camera" type="file" accept="video/*" /></label>
         <label>DJI Mic <input name="mic" type="file" accept="audio/*,video/*" /></label>
